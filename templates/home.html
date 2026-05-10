@@ -4,9 +4,9 @@
 
 {% block content %}
 <section class="contenedor">
-    <h1 style="color: #8a8f64; text-align: center; margin-bottom: 40px; font-family: 'DigitalGlitchDemo', sans-serif;">MASTER SERIES</h1>
+    <h1 style="color: #8a8f64; text-align: center; margin-bottom: 40px; font-family: 'DigitalGlitchDemo', sans-serif;">Master Series</h1>
 
-    <!-- Buscador y Filtros -->
+    <!-- Buscador -->
     <div class="search-container">
         <form action="/buscar" method="get" style="display: flex; gap: 10px;">
             <input type="text" name="q" placeholder="Buscar por nombre o referencia..." class="search-input" value="{{ query or '' }}">
@@ -14,6 +14,7 @@
         </form>
     </div>
 
+    <!-- Filtros -->
     <div class="filters-container">
         <form action="/buscar" method="get" id="filter-form" style="display: contents;">
             <input type="hidden" name="q" value="{{ query or '' }}">
@@ -36,6 +37,20 @@
                 <option value="">Todos los Deportes</option>
                 {% for dep in filtros.deportes %}
                     <option value="{{ dep }}" {% if sel_dep == dep %}selected{% endif %}>{{ dep }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="edad" class="filter-select" onchange="this.form.submit()">
+                <option value="">Todas las Edades</option>
+                {% for ed in filtros.edades %}
+                    <option value="{{ ed }}" {% if sel_edad == ed %}selected{% endif %}>{{ ed }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="talla" class="filter-select" onchange="this.form.submit()">
+                <option value="">Todas las Tallas</option>
+                {% for t in filtros.tallas %}
+                    <option value="{{ t }}" {% if sel_talla == t %}selected{% endif %}>{{ t }}</option>
                 {% endfor %}
             </select>
         </form>
