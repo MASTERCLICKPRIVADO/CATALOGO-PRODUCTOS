@@ -1,11 +1,6 @@
-from fastapi import APIRouter, Request, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 import pandas as pd
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 router = APIRouter()
 DATA_CSV = "data.csv"
@@ -15,15 +10,13 @@ def load_data():
         df = pd.read_csv(DATA_CSV, encoding='utf-8')
         df.columns = [c.strip() for c in df.columns]
         
-        col_map = {
-            'División': 'Division',
-            'Género': 'Genero'
-        }
-        for target, actual in col_map.items():
-            if actual in df.columns and target not in df.columns:
-                df[target] = df[actual]
+        # Mapeo de nombres si es necesario
+        if 'Division' not in df.columns and 'División' in df.columns:
+            df['Division'] = df['División']
+        if 'Genero' not in df.columns and 'Género' in df.columns:
+            df['Genero'] = df['Género']
 
-        # Normalización y limpieza de nulos
+        # Limpieza de nulos
         df['Division'] = df['Division'].fillna('Sin Categoría').astype(str)
         df['Genero'] = df['Genero'].fillna('Unisex').astype(str)
         df['Deporte'] = df['Deporte'].fillna('General').astype(str)
@@ -42,10 +35,8 @@ async def ver_catalogo(request: Request, page: int = 1):
     if df.empty:
         return templates.TemplateResponse(request, "home.html", {"productos": [], "mensaje": "No hay productos disponibles."})
     
-    # Agrupar por Referencia para la vista principal
     df_unique = df.drop_duplicates(subset=['Referencia'])
     
-    # Paginación
     limit = 12
     start = (page - 1) * limit
     end = start + limit
@@ -102,7 +93,6 @@ async def api_productos(
     start = (page - 1) * limit
     end = start + limit
     productos = df_unique.iloc[start:end].to_dict(orient="records")
-    
     has_more = len(df_unique) > end
     
     return JSONResponse({
@@ -148,7 +138,6 @@ async def buscar_productos(
     start = (page - 1) * limit
     end = start + limit
     productos = df_unique.iloc[start:end].to_dict(orient="records")
-    
     has_more = len(df_unique) > end
     
     filtros = {

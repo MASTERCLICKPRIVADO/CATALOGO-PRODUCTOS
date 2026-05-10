@@ -1,9 +1,0 @@
-<form action="/compatiblesi" method="get">
-  {% for motherboard in motherboards %}
-  <div>
-    <p>{{ motherboard.nombre }} - Socket: {{ motherboard.socket }}</p>
-    <input type="hidden" name="tipo_ram" value="{{ motherboard.tipo_ram }}">
-    <button type="submit" name="socket" value="{{ motherboard.socket }}">Seleccionar</button>
-  </div>
-  {% endfor %}
-</form>
