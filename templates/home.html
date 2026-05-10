@@ -53,6 +53,10 @@
                     <option value="{{ t }}" {% if sel_talla == t %}selected{% endif %}>{{ t }}</option>
                 {% endfor %}
             </select>
+
+            <a href="/" class="filter-select" style="text-align: center; text-decoration: none; background: #eee; color: #444; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 1px solid #ccc;">
+                Limpiar Filtros
+            </a>
         </form>
     </div>
 
@@ -71,10 +75,10 @@
                     <p class="product-ref">REF: {{ producto.Referencia }}</p>
                     <h3 class="product-name">{{ producto.nombre }}</h3>
                     <div class="price-row">
-                        <span class="old-price">{{ producto['precio Antes'] }}</span>
-                        <span class="discount-badge">{{ producto['%DCTO'] }}</span>
+                        <span class="old-price">Antes: {{ producto['precio Antes'] | currency }}</span>
+                        <span style="background: #8a8f64;" class="discount-badge">Dcto: {{ producto['%DCTO'] }}</span>
                     </div>
-                    <div class="current-price">{{ producto['Precio Ahora'] }}</div>
+                    <div class="current-price">Ahora: {{ producto['Precio Ahora'] | currency }}</div>
                 </div>
             </div>
         </div>
@@ -95,6 +99,14 @@
 </section>
 
 <script>
+    function formatCurrency(value) {
+        if (!value) return "";
+        let strVal = String(value).replace('$', '').replace(/\./g, '').replace(',', '').trim();
+        if (isNaN(strVal)) return value;
+        let formatted = new Intl.NumberFormat('de-DE').format(strVal);
+        return `$${formatted}`;
+    }
+
     let currentPage = {{ page }};
     const productsContainer = document.getElementById('products-container');
     const loadMoreBtn = document.getElementById('load-more-btn');
@@ -124,10 +136,10 @@
                                 <p class="product-ref">REF: ${producto.Referencia}</p>
                                 <h3 class="product-name">${producto.nombre}</h3>
                                 <div class="price-row">
-                                    <span class="old-price">${producto['precio Antes']}</span>
-                                    <span class="discount-badge">${producto['%DCTO']}</span>
+                                    <span class="old-price">Antes: ${formatCurrency(producto['precio Antes'])}</span>
+                                    <span class="discount-badge">Dcto: ${producto['%DCTO']}</span>
                                 </div>
-                                <div class="current-price">${producto['Precio Ahora']}</div>
+                                <div class="current-price">Ahora: ${formatCurrency(producto['Precio Ahora'])}</div>
                             </div>
                         </div>
                     `;

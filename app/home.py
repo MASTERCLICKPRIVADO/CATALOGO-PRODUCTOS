@@ -37,6 +37,7 @@ def load_data():
 
 @router.get("/", response_class=HTMLResponse)
 async def ver_catalogo(request: Request, page: int = 1):
+    templates = request.app.state.templates
     df = load_data()
     if df.empty:
         return templates.TemplateResponse(request, "home.html", {"productos": [], "mensaje": "No hay productos disponibles."})
@@ -120,6 +121,7 @@ async def buscar_productos(
     talla: str = "",
     page: int = 1
 ):
+    templates = request.app.state.templates
     df_all = load_data()
     df = df_all.copy()
     
@@ -172,6 +174,7 @@ async def buscar_productos(
 
 @router.get("/producto/{referencia}", response_class=HTMLResponse)
 async def detalle_producto(request: Request, referencia: str):
+    templates = request.app.state.templates
     df = load_data()
     variantes = df[df['Referencia'].astype(str) == str(referencia)]
     if variantes.empty:

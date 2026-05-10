@@ -40,11 +40,11 @@
             <!-- Precios -->
             <div style="border-top: 1px solid #eee; padding-top: 20px; margin-top: auto;">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 5px;">
-                    <span style="text-decoration: line-through; color: #999; font-size: 20px;">{{ producto['precio Antes'] }}</span>
-                    <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold;">{{ producto['%DCTO'] }}</span>
+                    <span style="text-decoration: line-through; color: #999; font-size: 20px;">Antes: {{ producto['precio Antes'] | currency }}</span>
+                    <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold;">Dcto: {{ producto['%DCTO'] }}</span>
                 </div>
                 <div style="font-size: 48px; font-weight: bold; color: #8a8f64;">
-                    {{ producto['Precio Ahora'] }}
+                    Ahora: {{ producto['Precio Ahora'] | currency }}
                 </div>
             </div>
 
