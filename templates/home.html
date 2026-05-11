@@ -104,8 +104,10 @@
                     <h3 class="product-name">{{ producto.nombre }}</h3>
                     <BR></BR>
                     <div class="price-row" style="position: relative;">
+                        {% if producto['%DCTO'] and producto['%DCTO'] != '0' and producto['%DCTO'] != '0%' %}
                         <span class="old-price">Antes: {{ producto['precio Antes'] | currency }}</span>
                         <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold; position: absolute; right: 0; bottom: 0;" class="discount-badge">Dcto: {{ producto['%DCTO'] }}</span>
+                        {% endif %}
                     </div>
                     <div class="current-price">Ahora: {{ producto['Precio Ahora'] | currency }}</div>
                 </div>
@@ -166,8 +168,10 @@
                                 <h3 class="product-name">${producto.nombre}</h3>
                                 <BR></BR>
                                 <div class="price-row" style="position: relative;">
+                                    ${producto['%DCTO'] && producto['%DCTO'] != '0' && producto['%DCTO'] != '0%' ? `
                                     <span class="old-price">Antes: ${formatCurrency(producto['precio Antes'])}</span>
                                     <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold; position: absolute; right: 0; bottom: 0;" class="discount-badge">Dcto: ${producto['%DCTO']}</span>
+                                    ` : ''}
                                 </div>
                                 <div class="current-price">Ahora: ${formatCurrency(producto['Precio Ahora'])}</div>
                             </div>

@@ -144,13 +144,36 @@ async def buscar_productos(
     productos = df_unique.iloc[start:end].to_dict(orient="records")
     has_more = len(df_unique) > end
     
-    filtros = {
-        "categorias": sorted([str(x) for x in df_all["Division"].unique()]),
-        "generos": sorted([str(x) for x in df_all["Genero"].unique()]),
-        "deportes": sorted([str(x) for x in df_all["Deporte"].unique()]),
-        "edades": sorted([str(x) for x in df_all["Edad"].unique()]),
-        "tallas": sorted([str(x) for x in df_all["Talla"].unique()])
-    }
+    # Calcular opciones de filtros dinámicamente según las selecciones actuales
+    # Para cada filtro, mostramos las opciones disponibles basadas en los DEMÁS filtros aplicados
+    def get_filtros_disponibles(df_f, q_val, cat_val, gen_val, dep_val, ed_val, tal_val):
+        # Primero aplicamos la búsqueda por texto si existe
+        if q_val:
+            df_f = df_f[
+                df_f['nombre'].str.contains(q_val, case=False) | 
+                df_f['Referencia'].astype(str).str.contains(q_val, case=False) |
+                df_f['Talla'].astype(str).str.contains(q_val, case=False)
+            ]
+        
+        # Función auxiliar para filtrar por todo excepto por una columna
+        def filter_except(exclude_col=None):
+            temp = df_f.copy()
+            if cat_val and exclude_col != "Division": temp = temp[temp['Division'] == cat_val]
+            if gen_val and exclude_col != "Genero": temp = temp[temp['Genero'] == gen_val]
+            if dep_val and exclude_col != "Deporte": temp = temp[temp['Deporte'] == dep_val]
+            if ed_val and exclude_col != "Edad": temp = temp[temp['Edad'] == ed_val]
+            if tal_val and exclude_col != "Talla": temp = temp[temp['Talla'] == tal_val]
+            return temp
+
+        return {
+            "categorias": sorted([str(x) for x in filter_except("Division")["Division"].unique()]),
+            "generos": sorted([str(x) for x in filter_except("Genero")["Genero"].unique()]),
+            "deportes": sorted([str(x) for x in filter_except("Deporte")["Deporte"].unique()]),
+            "edades": sorted([str(x) for x in filter_except("Edad")["Edad"].unique()]),
+            "tallas": sorted([str(x) for x in filter_except("Talla")["Talla"].unique()])
+        }
+
+    filtros = get_filtros_disponibles(df_all, q, categoria, genero, deporte, edad, talla)
     
     return templates.TemplateResponse(request, "home.html", {
         "productos": productos, 

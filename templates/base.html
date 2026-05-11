@@ -12,5 +12,24 @@
         {% block content %}{% endblock %}
     </main>
     {% include 'includes/footer.html' %}
+
+    <script>
+        let lastScrollTop = 0;
+        const header = document.querySelector('header');
+        
+        window.addEventListener('scroll', () => {
+            let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            
+            if (scrollTop > lastScrollTop && scrollTop > 10) {
+                // Scroll down
+                header.classList.add('nav-hidden');
+            } else {
+                // Scroll up
+                header.classList.remove('nav-hidden');
+            }
+            
+            lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
+        });
+    </script>
 </body>
 </html>
