@@ -104,7 +104,7 @@
                     <h3 class="product-name">{{ producto.nombre }}</h3>
                     <BR></BR>
                     <div class="price-row" style="position: relative;">
-                        <span class="old-price">Antes: {{ producto['precio antes'] | currency }}</span>
+                        <span class="old-price">Antes: {{ producto['precio Antes'] | currency }}</span>
                         <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold; position: absolute; right: 0; bottom: 0;" class="discount-badge">Dcto: {{ producto['%DCTO'] }}</span>
                     </div>
                     <div class="current-price">Ahora: {{ producto['Precio Ahora'] | currency }}</div>
@@ -164,9 +164,10 @@
                             <div class="product-info">
                                 <p class="product-ref">REF: ${producto.Referencia}</p>
                                 <h3 class="product-name">${producto.nombre}</h3>
-                                <div class="price-row">
+                                <BR></BR>
+                                <div class="price-row" style="position: relative;">
                                     <span class="old-price">Antes: ${formatCurrency(producto['precio Antes'])}</span>
-                                    <span class="discount-badge">Dcto: ${producto['%DCTO']}</span>
+                                    <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold; position: absolute; right: 0; bottom: 0;" class="discount-badge">Dcto: ${producto['%DCTO']}</span>
                                 </div>
                                 <div class="current-price">Ahora: ${formatCurrency(producto['Precio Ahora'])}</div>
                             </div>
