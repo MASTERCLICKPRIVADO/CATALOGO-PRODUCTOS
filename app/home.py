@@ -213,10 +213,21 @@ async def api_sugerencias(q: str = ""):
         return JSONResponse([])
     
     df = load_data()
-    # Buscar en nombres y referencias
+    
+    # Buscar en múltiples campos
     nombres = df[df['nombre'].str.contains(q, case=False)]['nombre'].unique().tolist()
     referencias = df[df['Referencia'].astype(str).str.contains(q, case=False)]['Referencia'].unique().tolist()
+    tallas = df[df['Talla'].astype(str).str.contains(q, case=False)]['Talla'].unique().tolist()
+    divisiones = df[df['Division'].str.contains(q, case=False)]['Division'].unique().tolist()
+    deportes = df[df['Deporte'].str.contains(q, case=False)]['Deporte'].unique().tolist()
     
-    # Combinar y limitar resultados
-    sugerencias = list(set(nombres + [str(r) for r in referencias]))[:10]
+    # Combinar todas las sugerencias, eliminar duplicados y limitar resultados
+    sugerencias = list(set(
+        nombres + 
+        [str(r) for r in referencias] + 
+        [str(t) for t in tallas] + 
+        divisiones + 
+        deportes
+    ))[:10]
+    
     return JSONResponse(sugerencias)

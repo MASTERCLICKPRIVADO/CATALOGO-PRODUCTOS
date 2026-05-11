@@ -8,12 +8,63 @@
 </head>
 <body>
     {% include 'includes/navbar.html' %}
+    
+    <!-- Botón Flotante para Filtros (Siempre visible) -->
+    <button id="openFilters" class="fixed-hamburger-btn">
+        <span>&#9776;</span>
+        <span class="btn-text">Filtros</span>
+    </button>
+
+    <!-- Sidebar para Filtros -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Filtros</h2>
+            <button class="close-sidebar" id="closeSidebar">&times;</button>
+        </div>
+        <div class="sidebar-content">
+            {% block sidebar %}{% endblock %}
+        </div>
+    </div>
+
     <main>
         {% block content %}{% endblock %}
     </main>
     {% include 'includes/footer.html' %}
 
     <script>
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const closeBtn = document.getElementById('closeSidebar');
+        const openBtn = document.getElementById('openFilters');
+
+        function toggleSidebar(forceOpen = null) {
+            const isOpen = forceOpen !== null ? forceOpen : !sidebar.classList.contains('active');
+            
+            if (isOpen) {
+                sidebar.classList.add('active');
+                overlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+                sessionStorage.setItem('sidebarOpen', 'true');
+            } else {
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+                sessionStorage.setItem('sidebarOpen', 'false');
+            }
+        }
+
+        // Restaurar estado al cargar la página
+        window.addEventListener('DOMContentLoaded', () => {
+            if (sessionStorage.getItem('sidebarOpen') === 'true') {
+                toggleSidebar(true);
+            }
+        });
+
+        if (openBtn) openBtn.addEventListener('click', () => toggleSidebar(true));
+        closeBtn.addEventListener('click', () => toggleSidebar(false));
+        overlay.addEventListener('click', () => toggleSidebar(false));
+
         let lastScrollTop = 0;
         const header = document.querySelector('header');
         

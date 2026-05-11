@@ -2,89 +2,71 @@
 
 {% block title %} Catálogo de Productos {% endblock %}
 
-{% block content %}
-<section class="contenedor">
-    <br><br>
-    <!-- Buscador y Filtros -->
-    <div class="search-container">
-        <form action="/buscar" method="get" style="display: flex; gap: 10px; position: relative;">
-            <input type="text" name="q" id="search-input" placeholder="Buscar por nombre o referencia..." class="search-input" value="{{ query or '' }}" list="search-suggestions" autocomplete="off">
-            <datalist id="search-suggestions"></datalist>
-            <button type="submit" style="width: auto; padding: 0 30px;">Buscar</button>
-        </form>
-    </div>
-
-    <script>
-        const searchInput = document.getElementById('search-input');
-        const suggestionsList = document.getElementById('search-suggestions');
-
-        searchInput.addEventListener('input', async () => {
-            const query = searchInput.value;
-            if (query.length < 2) {
-                suggestionsList.innerHTML = '';
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/sugerencias?q=${encodeURIComponent(query)}`);
-                const sugerencias = await response.json();
-                
-                suggestionsList.innerHTML = '';
-                sugerencias.forEach(sug => {
-                    const option = document.createElement('option');
-                    option.value = sug;
-                    suggestionsList.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Error fetching suggestions:', error);
-            }
-        });
-    </script>
-
+{% block sidebar %}
     <div class="filters-container">
         <form action="/buscar" method="get" id="filter-form" style="display: contents;">
             <input type="hidden" name="q" value="{{ query or '' }}">
             
-            <select name="categoria" class="filter-select" onchange="this.form.submit()">
+            <label style="font-weight: bold; margin-bottom: 5px;">Categoría</label>
+            <select name="categoria" class="filter-select">
                 <option value="">Todas las Categorías</option>
                 {% for cat in filtros.categorias %}
                     <option value="{{ cat }}" {% if sel_cat == cat %}selected{% endif %}>{{ cat }}</option>
                 {% endfor %}
             </select>
 
-            <select name="genero" class="filter-select" onchange="this.form.submit()">
+            <label style="font-weight: bold; margin-bottom: 5px;">Género</label>
+            <select name="genero" class="filter-select">
                 <option value="">Todos los Géneros</option>
                 {% for gen in filtros.generos %}
                     <option value="{{ gen }}" {% if sel_gen == gen %}selected{% endif %}>{{ gen }}</option>
                 {% endfor %}
             </select>
 
-            <select name="deporte" class="filter-select" onchange="this.form.submit()">
+            <label style="font-weight: bold; margin-bottom: 5px;">Deporte</label>
+            <select name="deporte" class="filter-select">
                 <option value="">Todos los Deportes</option>
                 {% for dep in filtros.deportes %}
                     <option value="{{ dep }}" {% if sel_dep == dep %}selected{% endif %}>{{ dep }}</option>
                 {% endfor %}
             </select>
 
-
-            <select name="edad" class="filter-select" onchange="this.form.submit()">
+            <label style="font-weight: bold; margin-bottom: 5px;">Edad</label>
+            <select name="edad" class="filter-select">
                 <option value="">Todas las Edades</option>
                 {% for ed in filtros.edades %}
                     <option value="{{ ed }}" {% if sel_edad == ed %}selected{% endif %}>{{ ed }}</option>
                 {% endfor %}
             </select>
 
-            <select name="talla" class="filter-select" onchange="this.form.submit()">
+            <label style="font-weight: bold; margin-bottom: 5px;">Talla</label>
+            <select name="talla" class="filter-select">
                 <option value="">Todas las Tallas</option>
                 {% for t in filtros.tallas %}
                     <option value="{{ t }}" {% if sel_talla == t %}selected{% endif %}>{{ t }}</option>
                 {% endfor %}
             </select>
 
-            <a href="/" class="filter-select" style="text-align: center; text-decoration: none; background: #eee; color: #444; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 1px solid #ccc;">
+            <br>
+            <button type="submit" class="btn" style="margin-bottom: 10px;">Aplicar Filtros</button>
+            
+            <a href="/" class="filter-select" onclick="sessionStorage.setItem('sidebarOpen', 'false')" style="text-align: center; text-decoration: none; background: #eee; color: #444; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 1px solid #ccc; height: 45px;">
                 Limpiar Filtros
             </a>
 
+        </form>
+    </div>
+{% endblock %}
+
+{% block content %}
+<section class="contenedor">
+    <br><br>
+    <!-- Buscador -->
+    <div class="search-container">
+        <form action="/buscar" method="get" style="display: flex; gap: 10px; position: relative;">
+            <input type="text" name="q" id="search-input" placeholder="Buscar por nombre o referencia..." class="search-input" value="{{ query or '' }}" list="search-suggestions" autocomplete="off">
+            <datalist id="search-suggestions"></datalist>
+            <button type="submit" style="width: auto; padding: 0 30px;">Buscar</button>
         </form>
     </div>
 
@@ -130,6 +112,33 @@
 </section>
 
 <script>
+    const searchInput = document.getElementById('search-input');
+    const suggestionsList = document.getElementById('search-suggestions');
+
+    if (searchInput && suggestionsList) {
+        searchInput.addEventListener('input', async () => {
+            const query = searchInput.value;
+            if (query.length < 2) {
+                suggestionsList.innerHTML = '';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/sugerencias?q=${encodeURIComponent(query)}`);
+                const sugerencias = await response.json();
+                
+                suggestionsList.innerHTML = '';
+                sugerencias.forEach(sug => {
+                    const option = document.createElement('option');
+                    option.value = sug;
+                    suggestionsList.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error fetching suggestions:', error);
+            }
+        });
+    }
+
     function formatCurrency(value) {
         if (!value) return "";
         let strVal = String(value).replace('$', '').replace(/\./g, '').replace(',', '').trim();
