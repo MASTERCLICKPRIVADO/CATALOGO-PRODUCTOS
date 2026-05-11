@@ -5,7 +5,7 @@
 {% block sidebar %}
     <div class="filters-container">
         <form action="/buscar" method="get" id="filter-form" style="display: contents;">
-            <input type="hidden" name="q" value="{{ query or '' }}">
+            <!-- Removido el input oculto 'q' para que los filtros sean independientes de la búsqueda -->
             
             <label style="font-weight: bold; margin-bottom: 5px;">Categoría</label>
             <select name="categoria" class="filter-select">
@@ -63,12 +63,28 @@
     <br><br>
     <!-- Buscador -->
     <div class="search-container">
-        <form action="/buscar" method="get" style="display: flex; gap: 10px; position: relative;">
+        <form action="/buscar" method="get" id="search-form" style="display: flex; gap: 10px; position: relative;">
             <input type="text" name="q" id="search-input" placeholder="Buscar por nombre o referencia..." class="search-input" value="{{ query or '' }}" list="search-suggestions" autocomplete="off">
             <datalist id="search-suggestions"></datalist>
             <button type="submit" style="width: auto; padding: 0 30px;">Buscar</button>
         </form>
     </div>
+
+    <script>
+        // Si el usuario usa el buscador, desactivar los filtros laterales
+        document.getElementById('search-form').addEventListener('submit', () => {
+            sessionStorage.setItem('sidebarOpen', 'false');
+            // No enviamos los parámetros de filtros en el buscador
+        });
+
+        // Si el usuario usa los filtros laterales, limpiar el buscador
+        document.getElementById('filter-form').addEventListener('submit', () => {
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) searchInput.value = '';
+            // Cerrar la barra lateral automáticamente al aplicar filtros
+            sessionStorage.setItem('sidebarOpen', 'false');
+        });
+    </script>
 
     {% if mensaje %}
         <div class="alert alert-info" style="text-align: center; padding: 20px;">{{ mensaje }}</div>
