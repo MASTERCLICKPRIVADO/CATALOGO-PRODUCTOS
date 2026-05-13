@@ -8,7 +8,7 @@
             <!-- Removido el input oculto 'q' para que los filtros sean independientes de la búsqueda -->
             
             <label style="font-weight: bold; margin-bottom: 5px;">Categoría</label>
-            <select name="categoria" class="filter-select">
+            <select name="categoria" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todas las Categorías</option>
                 {% for cat in filtros.categorias %}
                     <option value="{{ cat }}">{{ cat }}</option>
@@ -16,7 +16,7 @@
             </select>
 
             <label style="font-weight: bold; margin-bottom: 5px;">Género</label>
-            <select name="genero" class="filter-select">
+            <select name="genero" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todos los Géneros</option>
                 {% for gen in filtros.generos %}
                     <option value="{{ gen }}">{{ gen }}</option>
@@ -24,7 +24,7 @@
             </select>
 
             <label style="font-weight: bold; margin-bottom: 5px;">Deporte</label>
-            <select name="deporte" class="filter-select">
+            <select name="deporte" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todos los Deportes</option>
                 {% for dep in filtros.deportes %}
                     <option value="{{ dep }}">{{ dep }}</option>
@@ -32,7 +32,7 @@
             </select>
 
             <label style="font-weight: bold; margin-bottom: 5px;">Edad</label>
-            <select name="edad" class="filter-select">
+            <select name="edad" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todas las Edades</option>
                 {% for ed in filtros.edades %}
                     <option value="{{ ed }}">{{ ed }}</option>
@@ -40,7 +40,7 @@
             </select>
 
             <label style="font-weight: bold; margin-bottom: 5px;">Talla</label>
-            <select name="talla" class="filter-select">
+            <select name="talla" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todas las Tallas</option>
                 {% for t in filtros.tallas %}
                     <option value="{{ t }}">{{ t }}</option>

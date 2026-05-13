@@ -32,13 +32,32 @@ def load_data():
     except FileNotFoundError:
         return pd.DataFrame()
 
-def get_filtros_completos(df):
+def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None, edad=None, talla=None):
+    def filtrar(df_in, skip=None):
+        df_f = df_in
+        if q:
+            df_f = df_f[
+                df_f['nombre'].str.contains(q, case=False) | 
+                df_f['Referencia'].astype(str).str.contains(q, case=False)
+            ]
+        if categoria and skip != 'categoria':
+            df_f = df_f[df_f['Division'] == categoria]
+        if genero and skip != 'genero':
+            df_f = df_f[df_f['Genero'] == genero]
+        if deporte and skip != 'deporte':
+            df_f = df_f[df_f['Deporte'] == deporte]
+        if edad and skip != 'edad':
+            df_f = df_f[df_f['Edad'] == edad]
+        if talla and skip != 'talla':
+            df_f = df_f[df_f['Talla'] == talla]
+        return df_f
+
     return {
-        "categorias": sorted([str(x) for x in df["Division"].unique()]),
-        "generos": sorted([str(x) for x in df["Genero"].unique()]),
-        "deportes": sorted([str(x) for x in df["Deporte"].unique()]),
-        "edades": sorted([str(x) for x in df["Edad"].unique()]),
-        "tallas": sorted([str(x) for x in df["Talla"].unique()])
+        "categorias": sorted([str(x) for x in filtrar(df, 'categoria')["Division"].unique()]),
+        "generos": sorted([str(x) for x in filtrar(df, 'genero')["Genero"].unique()]),
+        "deportes": sorted([str(x) for x in filtrar(df, 'deporte')["Deporte"].unique()]),
+        "edades": sorted([str(x) for x in filtrar(df, 'edad')["Edad"].unique()]),
+        "tallas": sorted([str(x) for x in filtrar(df, 'talla')["Talla"].unique()])
     }
 
 @router.get("/", response_class=HTMLResponse)
@@ -144,8 +163,8 @@ async def buscar_productos(
     productos = df_unique.iloc[start:end].to_dict(orient="records")
     has_more = len(df_unique) > end
     
-    # Calcular opciones de filtros siempre sobre el total de datos (Independientes)
-    filtros = get_filtros_completos(df_all)
+    # Calcular opciones de filtros dinámicos basados en la selección actual
+    filtros = get_filtros_completos(df_all, q, categoria, genero, deporte, edad, talla)
     
     return templates.TemplateResponse(request, "home.html", {
         "productos": productos, 
