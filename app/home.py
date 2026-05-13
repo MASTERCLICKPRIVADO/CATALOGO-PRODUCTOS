@@ -138,12 +138,24 @@ async def buscar_productos(
     templates = request.app.state.templates
     df_all = load_data()
     df = df_all.copy()
+    mensaje = None
     
     if q:
-        df = df[
+        df_search = df[
             df['nombre'].str.contains(q, case=False) | 
             df['Referencia'].astype(str).str.contains(q, case=False)
         ]
+        if df_search.empty:
+            mensaje = f"No se encontraron resultados para '{q}'. Recuerda que el buscador solo funciona por nombre o referencia."
+            # Si no hay resultados de búsqueda, ignoramos el parámetro 'q' para los filtros
+            # de modo que el sidebar no se quede vacío y el usuario pueda seguir navegando.
+            q_for_filters = ""
+        else:
+            df = df_search
+            q_for_filters = q
+    else:
+        q_for_filters = ""
+
     if categoria:
         df = df[df['Division'] == categoria]
     if genero:
@@ -164,7 +176,8 @@ async def buscar_productos(
     has_more = len(df_unique) > end
     
     # Calcular opciones de filtros dinámicos basados en la selección actual
-    filtros = get_filtros_completos(df_all, q, categoria, genero, deporte, edad, talla)
+    # Usamos q_for_filters para evitar que el sidebar se rompa si la búsqueda no dio resultados
+    filtros = get_filtros_completos(df_all, q_for_filters, categoria, genero, deporte, edad, talla)
     
     return templates.TemplateResponse(request, "home.html", {
         "productos": productos, 
@@ -176,7 +189,8 @@ async def buscar_productos(
         "sel_edad": edad,
         "sel_talla": talla,
         "page": page,
-        "has_more": has_more
+        "has_more": has_more,
+        "mensaje": mensaje
     })
 
 @router.get("/producto/{referencia}", response_class=HTMLResponse)
