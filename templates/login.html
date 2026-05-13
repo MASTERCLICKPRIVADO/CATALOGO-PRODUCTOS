@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block title %} Iniciar Sesión - FastComponents {% endblock %}
+
+{% block content %}
+<div class="contenedor" style="display: flex; justify-content: center; align-items: center; min-height: 80vh;">
+    <div class="carta" style="max-width: 400px; width: 100%; padding: 40px;">
+        <h2 style="margin-bottom: 20px;">Iniciar Sesión</h2>
+        
+        {% if error %}
+        <div style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-size: 14px;">
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        <form action="/login" method="post">
+            <div style="margin-bottom: 20px;">
+                <label for="username" style="display: block; margin-bottom: 8px; font-weight: 600;">Usuario</label>
+                <input type="text" id="username" name="username" class="search-input" placeholder="tu@email.com" required>
+            </div>
+            
+            <div style="margin-bottom: 30px;">
+                <label for="password" style="display: block; margin-bottom: 8px; font-weight: 600;">Contraseña</label>
+                <input type="password" id="password" name="password" class="search-input" placeholder="••••••••" required>
+            </div>
+            
+            <button type="submit">Entrar</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<p>Inicia sesión para ver el catálogo completo de productos.</p>
+{% endblock %}

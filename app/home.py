@@ -7,7 +7,7 @@ DATA_CSV = "data.csv"
 
 def load_data():
     try:
-        df = pd.read_csv(DATA_CSV, encoding='utf-8')
+        df = pd.read_csv(DATA_CSV, sep=';', encoding='latin-1')
         df.columns = [c.strip() for c in df.columns]
         
         # Asegurar que Inventario sea numérico

@@ -81,6 +81,18 @@
             
             lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
         });
+
+        // Cerrar sesión automáticamente al cerrar la pestaña o el navegador
+        window.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                // Opcional: podrías implementar un timer aquí si no quieres que sea instantáneo al cambiar de pestaña
+            }
+        });
+
+        window.addEventListener('pagehide', function() {
+            // navigator.sendBeacon es el método más confiable para enviar datos al servidor al cerrar la página
+            navigator.sendBeacon('/logout');
+        });
     </script>
 </body>
 </html>
