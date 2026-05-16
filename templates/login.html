@@ -3,9 +3,8 @@
 {% block title %} Iniciar Sesión - FastComponents {% endblock %}
 
 {% block content %}
-<div style="min-height: 100vh; width: 100%; display: flex; flex-direction: column;">
-    <div class="contenedor" style="display: flex; justify-content: center; align-items: center; flex: 1;">
-        <div class="carta" style="max-width: 400px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
+<div class="contenedor" style="display: flex; justify-content: center; align-items: center; flex: 1; padding: 20px 15px;">
+    <div class="carta" style="max-width: 400px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
         <h2 style="margin-bottom: 20px;">Iniciar Sesión</h2>
         
         {% if error %}
@@ -28,7 +27,6 @@
             <button type="submit">Entrar</button>
         </form>
     </div>
-</div>
 </div>
 {% endblock %}
 

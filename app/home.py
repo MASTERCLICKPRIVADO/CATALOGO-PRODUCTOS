@@ -234,3 +234,8 @@ async def api_sugerencias(q: str = ""):
     ))[:10]
     
     return JSONResponse(sugerencias)
+
+@router.get("/perfil", response_class=HTMLResponse)
+async def ver_perfil(request: Request):
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "perfil.html", {})

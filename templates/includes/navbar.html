@@ -9,11 +9,12 @@
         
         <nav style="display: flex; align-items: center; gap: 20px;">
             {% if request.session.user %}
-                <div style="display: flex; flex-direction: column; align-items: flex-end;">
-                    <span style="font-weight: bold; color: #8a8f64; font-size: 14px;">{{ request.session.user }}</span>
-                    <span style="font-size: 11px; color: #666;">{{ request.session.city }}</span>
-                </div>
-                <a href="/logout" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #c62828;">Cerrar Sesión</a>
+                <a href="/perfil" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                    <span>👤</span> Perfil
+                </a>
+                <a href="/perfil" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                    <span>🛒</span> Carrito
+                </a>
             {% endif %}
         </nav>
     </div>
