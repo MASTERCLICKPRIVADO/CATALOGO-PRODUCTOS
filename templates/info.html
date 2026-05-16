@@ -88,15 +88,26 @@
 
             <!-- Tallas Disponibles -->
             <div>
-                <h3 style="color: #8a8f64; margin-bottom: 15px;">Tallas Disponibles:</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <h3 style="color: #8a8f64; margin-bottom: 15px;">
+                    Tallas Disponibles{% if ciudad_usuario %} <span style="font-size: 13px; color: #777; font-weight: normal;">({{ ciudad_usuario }})</span>{% endif %}:
+                </h3>
+                <div id="tallas-container" style="display: flex; flex-wrap: wrap; gap: 10px;">
                     {% for t in tallas %}
-                    <div style="border: 2px solid #8a8f64; padding: 10px 20px; border-radius: 14px; text-align: center; min-width: 80px;">
-                        <span style="display: block; font-weight: bold; font-size: 18px; color: #8a8f64;">{{ t.Talla }}</span>
-                        <span style="font-size: 12px; color: #777;">Stock: {{ t.Inventario }}</span>
+                    {% set sin_stock = t.stock_ciudad <= 0 %}
+                    <div class="talla-opcion"
+                         data-talla="{{ t.Talla }}"
+                         data-stock="{{ t.stock_ciudad }}"
+                         style="border: 2px solid {% if sin_stock %}#ccc{% else %}#8a8f64{% endif %};
+                                padding: 10px 20px; border-radius: 14px; text-align: center; min-width: 80px;
+                                cursor: {% if sin_stock %}not-allowed{% else %}pointer{% endif %};
+                                opacity: {% if sin_stock %}0.5{% else %}1{% endif %};
+                                transition: all 0.15s;">
+                        <span style="display: block; font-weight: bold; font-size: 18px; color: {% if sin_stock %}#999{% else %}#8a8f64{% endif %};">{{ t.Talla }}</span>
+                        <span style="font-size: 12px; color: #777;">Stock: <span class="stock-label">{{ t.stock_ciudad }}</span></span>
                     </div>
                     {% endfor %}
                 </div>
+                <p id="talla-feedback" style="margin-top: 10px; font-size: 14px; color: #777; min-height: 20px;"></p>
             </div>
 
             <!-- Precios -->
@@ -112,8 +123,101 @@
                 </div>
             </div>
 
-            <button onclick="window.history.back()" style="margin-top: 20px;">Regresar al Catálogo</button>
+            <button id="btn-agregar-carrito" type="button"
+                    data-referencia="{{ producto.Referencia }}"
+                    style="margin-top: 20px; background: #8a8f64; color: white;">
+                🛒 Agregar al Carrito
+            </button>
+            <button onclick="window.history.back()" style="margin-top: 10px;">Regresar al Catálogo</button>
+            <p id="carrito-feedback" style="margin-top: 5px; font-size: 14px; min-height: 20px; text-align: center;"></p>
         </div>
     </div>
 </section>
+
+<script>
+    (function () {
+        const tallasContainer = document.getElementById('tallas-container');
+        const tallaFeedback = document.getElementById('talla-feedback');
+        const btnAgregar = document.getElementById('btn-agregar-carrito');
+        const carritoFeedback = document.getElementById('carrito-feedback');
+        let tallaSeleccionada = null;
+
+        function seleccionarTalla(div) {
+            const stock = parseInt(div.dataset.stock || '0', 10);
+            if (stock <= 0) return;
+            document.querySelectorAll('.talla-opcion').forEach(d => {
+                d.style.background = '';
+                d.style.color = '';
+            });
+            div.style.background = '#8a8f64';
+            div.querySelector('span').style.color = 'white';
+            tallaSeleccionada = div.dataset.talla;
+            tallaFeedback.textContent = `Talla seleccionada: ${tallaSeleccionada}`;
+            tallaFeedback.style.color = '#8a8f64';
+        }
+
+        document.querySelectorAll('.talla-opcion').forEach(div => {
+            div.addEventListener('click', () => seleccionarTalla(div));
+        });
+
+        btnAgregar.addEventListener('click', async () => {
+            if (!tallaSeleccionada) {
+                carritoFeedback.textContent = '⚠️ Selecciona una talla primero.';
+                carritoFeedback.style.color = '#c62828';
+                return;
+            }
+            btnAgregar.disabled = true;
+            btnAgregar.textContent = 'Agregando...';
+            carritoFeedback.textContent = '';
+
+            try {
+                const fd = new FormData();
+                fd.append('referencia', btnAgregar.dataset.referencia);
+                fd.append('talla', tallaSeleccionada);
+
+                const resp = await fetch('/carrito/agregar', { method: 'POST', body: fd });
+                const data = await resp.json();
+
+                if (resp.ok && data.ok) {
+                    carritoFeedback.textContent = '✅ ' + data.mensaje;
+                    carritoFeedback.style.color = '#2e7d32';
+
+                    // Actualizar el stock visible de la talla seleccionada
+                    const divSel = document.querySelector(`.talla-opcion[data-talla="${tallaSeleccionada}"]`);
+                    if (divSel) {
+                        divSel.dataset.stock = data.stock_restante;
+                        const stockLabel = divSel.querySelector('.stock-label');
+                        if (stockLabel) stockLabel.textContent = data.stock_restante;
+                        if (data.stock_restante <= 0) {
+                            divSel.style.border = '2px solid #ccc';
+                            divSel.style.opacity = '0.5';
+                            divSel.style.cursor = 'not-allowed';
+                            divSel.style.background = '';
+                            divSel.querySelector('span').style.color = '#999';
+                            tallaSeleccionada = null;
+                            tallaFeedback.textContent = 'Se agotó el stock de esa talla en tu ciudad.';
+                            tallaFeedback.style.color = '#c62828';
+                        }
+                    }
+
+                    // Actualizar el badge del navbar si existe
+                    const badge = document.getElementById('cart-badge');
+                    if (badge && typeof data.total_items === 'number') {
+                        badge.textContent = data.total_items;
+                        badge.style.display = data.total_items > 0 ? 'inline-block' : 'none';
+                    }
+                } else {
+                    carritoFeedback.textContent = '❌ ' + (data.mensaje || 'No se pudo agregar.');
+                    carritoFeedback.style.color = '#c62828';
+                }
+            } catch (err) {
+                carritoFeedback.textContent = '❌ Error de conexión.';
+                carritoFeedback.style.color = '#c62828';
+            } finally {
+                btnAgregar.disabled = false;
+                btnAgregar.textContent = '🛒 Agregar al Carrito';
+            }
+        });
+    })();
+</script>
 {% endblock %}

@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+
+{% block title %} Mi Carrito - MASTER SERIES {% endblock %}
+
+{% block sidebar %}
+<p>Aquí puedes ver los artículos que has agregado a tu carrito de compras.</p>
+{% endblock %}
+
+{% block content %}
+<section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
+    <div style="max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
+        <h1 style="color: #8a8f64; margin-bottom: 5px;">🛒 Mi Carrito</h1>
+        <p style="color: #777; margin-bottom: 25px;">
+            {{ cantidad }} artículo{{ 's' if cantidad != 1 else '' }} en tu carrito.
+        </p>
+
+        {% if items %}
+            <div id="carrito-items" style="display: flex; flex-direction: column; gap: 15px;">
+                {% for item in items %}
+                <div class="carrito-item" id="item-{{ item.id }}"
+                     style="display: grid; grid-template-columns: 100px 1fr auto; gap: 20px; align-items: center;
+                            padding: 15px; border: 1px solid #eee; border-radius: 16px; background: #fafafa;">
+                    <img src="{{ item.imagen }}" alt="{{ item.nombre }}"
+                         onerror="this.src='/static/img/ESCUDO.jpeg'"
+                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 12px;">
+
+                    <div>
+                        <h3 style="color: #333; margin-bottom: 5px;">{{ item.nombre }}</h3>
+                        <p style="color: #999; font-size: 13px; margin: 0;">REF: {{ item.referencia }}</p>
+                        <p style="color: #555; font-size: 14px; margin: 5px 0;">Talla: <strong>{{ item.talla }}</strong> · Ciudad: {{ item.ciudad }}</p>
+                        <p style="color: #8a8f64; font-weight: bold; font-size: 18px; margin: 5px 0;">
+                            {{ item.precio | currency }}
+                        </p>
+                        <p style="color: #aaa; font-size: 11px; margin: 0;">Agregado: {{ item.fecha_agregado }}</p>
+                    </div>
+
+                    <button class="btn-eliminar" data-item-id="{{ item.id }}"
+                            style="background: #c62828; color: white; padding: 10px 20px; border: none;
+                                   border-radius: 12px; cursor: pointer; font-weight: bold;">
+                        Eliminar
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;
+                        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                <div>
+                    <span style="font-size: 18px; color: #555;">Total:</span>
+                    <span id="total-carrito" style="font-size: 32px; font-weight: bold; color: #8a8f64; margin-left: 10px;">
+                        {{ total | currency }}
+                    </span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="btn-vaciar"
+                            style="background: #888; color: white; padding: 12px 24px; border: none;
+                                   border-radius: 12px; cursor: pointer;">
+                        Vaciar carrito
+                    </button>
+                    <a href="/" class="btn" style="background: #8a8f64; padding: 12px 24px; text-decoration: none;">
+                        Seguir comprando
+                    </a>
+                </div>
+            </div>
+        {% else %}
+            <div id="carrito-vacio" style="text-align: center; padding: 50px;">
+                <div style="font-size: 70px; margin-bottom: 20px;">🛒</div>
+                <h3 style="color: #555;">Tu carrito está vacío</h3>
+                <p style="color: #888; margin-bottom: 25px;">Agrega artículos desde el catálogo para verlos aquí.</p>
+                <a href="/" class="btn" style="background: #8a8f64; display: inline-block; padding: 12px 30px; text-decoration: none;">
+                    Ir al Catálogo
+                </a>
+            </div>
+        {% endif %}
+
+        <p id="carrito-msg" style="margin-top: 15px; text-align: center; min-height: 20px;"></p>
+    </div>
+</section>
+
+<script>
+    function formatCurrency(value) {
+        if (!value && value !== 0) return "";
+        let strVal = String(value).replace('$', '').replace(/\./g, '').replace(',', '').trim();
+        if (isNaN(strVal)) return value;
+        let formatted = new Intl.NumberFormat('de-DE').format(strVal);
+        return `$${formatted}`;
+    }
+
+    const msg = document.getElementById('carrito-msg');
+
+    function mostrarMsg(texto, ok) {
+        msg.textContent = texto;
+        msg.style.color = ok ? '#2e7d32' : '#c62828';
+        setTimeout(() => { msg.textContent = ''; }, 3500);
+    }
+
+    function recalcularTotal() {
+        let total = 0;
+        document.querySelectorAll('.carrito-item').forEach(div => {
+            const precioTxt = div.querySelector('p[style*="font-weight: bold"]')?.textContent || '';
+            const limpio = precioTxt.replace(/[^\d]/g, '');
+            if (limpio) total += parseInt(limpio, 10);
+        });
+        const totalEl = document.getElementById('total-carrito');
+        if (totalEl) totalEl.textContent = formatCurrency(total);
+    }
+
+    document.querySelectorAll('.btn-eliminar').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const itemId = btn.dataset.itemId;
+            btn.disabled = true;
+            btn.textContent = 'Eliminando...';
+
+            try {
+                const fd = new FormData();
+                fd.append('item_id', itemId);
+                const resp = await fetch('/carrito/eliminar', { method: 'POST', body: fd });
+                const data = await resp.json();
+
+                if (resp.ok && data.ok) {
+                    const div = document.getElementById('item-' + itemId);
+                    if (div) div.remove();
+                    recalcularTotal();
+                    mostrarMsg('Item eliminado y stock repuesto.', true);
+
+                    const badge = document.getElementById('cart-badge');
+                    if (badge && typeof data.total_items === 'number') {
+                        badge.textContent = data.total_items;
+                        badge.style.display = data.total_items > 0 ? 'inline-block' : 'none';
+                    }
+
+                    if (!document.querySelector('.carrito-item')) {
+                        setTimeout(() => window.location.reload(), 800);
+                    }
+                } else {
+                    mostrarMsg(data.mensaje || 'No se pudo eliminar.', false);
+                    btn.disabled = false;
+                    btn.textContent = 'Eliminar';
+                }
+            } catch {
+                mostrarMsg('Error de conexión.', false);
+                btn.disabled = false;
+                btn.textContent = 'Eliminar';
+            }
+        });
+    });
+
+    const btnVaciar = document.getElementById('btn-vaciar');
+    if (btnVaciar) {
+        btnVaciar.addEventListener('click', async () => {
+            if (!confirm('¿Vaciar todo el carrito? El inventario se repondrá.')) return;
+            btnVaciar.disabled = true;
+            btnVaciar.textContent = 'Vaciando...';
+
+            try {
+                const resp = await fetch('/carrito/vaciar', { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok && data.ok) {
+                    window.location.reload();
+                } else {
+                    mostrarMsg(data.mensaje || 'No se pudo vaciar.', false);
+                    btnVaciar.disabled = false;
+                    btnVaciar.textContent = 'Vaciar carrito';
+                }
+            } catch {
+                mostrarMsg('Error de conexión.', false);
+                btnVaciar.disabled = false;
+                btnVaciar.textContent = 'Vaciar carrito';
+            }
+        });
+    }
+</script>
+{% endblock %}

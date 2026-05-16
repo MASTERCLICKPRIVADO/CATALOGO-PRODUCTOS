@@ -93,6 +93,20 @@
             // navigator.sendBeacon es el método más confiable para enviar datos al servidor al cerrar la página
             navigator.sendBeacon('/logout');
         });
+
+        // Actualizar el badge del carrito al cargar cualquier página
+        (function actualizarBadgeCarrito() {
+            const badge = document.getElementById('cart-badge');
+            if (!badge) return;
+            fetch('/api/carrito/contador')
+                .then(r => r.json())
+                .then(data => {
+                    const total = data.total || 0;
+                    badge.textContent = total;
+                    badge.style.display = total > 0 ? 'inline-block' : 'none';
+                })
+                .catch(() => {});
+        })();
     </script>
 </body>
 </html>

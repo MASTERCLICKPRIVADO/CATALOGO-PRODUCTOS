@@ -12,8 +12,14 @@
                 <a href="/perfil" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
                     <span>👤</span> Perfil
                 </a>
-                <a href="/perfil" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                <a href="/carrito" class="btn" style="position: relative; width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
                     <span>🛒</span> Carrito
+                    <span id="cart-badge"
+                          style="display: none; position: absolute; top: -6px; right: -6px;
+                                 background: #c62828; color: white; border-radius: 50%;
+                                 min-width: 20px; height: 20px; padding: 0 5px;
+                                 font-size: 11px; font-weight: bold; line-height: 20px;
+                                 text-align: center;">0</span>
                 </a>
             {% endif %}
         </nav>

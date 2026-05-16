@@ -5,39 +5,42 @@ import pandas as pd
 router = APIRouter()
 DATA_CSV = "data.csv"
 
+
 def load_data():
+    """
+    Solo se llama UNA vez al iniciar el servidor (desde factory.py lifespan).
+    No se llama en ningún endpoint.
+    """
     try:
         df = pd.read_csv(DATA_CSV, sep=';', encoding='latin-1')
         df.columns = [c.strip() for c in df.columns]
-        
-        # Asegurar que Inventario sea numérico
+
         if 'Inventario' in df.columns:
             df['Inventario'] = pd.to_numeric(df['Inventario'], errors='coerce').fillna(0).astype(int)
 
-        # Mapeo de nombres si es necesario (para que coincidan con los templates)
         if 'Division' in df.columns:
             df['División'] = df['Division']
         if 'Genero' in df.columns:
             df['Género'] = df['Genero']
 
-        # Limpieza de nulos
         df['Division'] = df['Division'].fillna('Sin Categoría').astype(str)
         df['Genero'] = df['Genero'].fillna('Unisex').astype(str)
         df['Deporte'] = df['Deporte'].fillna('General').astype(str)
         df['Edad'] = df['Edad'].fillna('Todas').astype(str)
         df['Talla'] = df['Talla'].fillna('N/A').astype(str)
         df['nombre'] = df['nombre'].fillna('Sin Nombre').astype(str)
-        
+
         return df
     except FileNotFoundError:
         return pd.DataFrame()
+
 
 def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None, edad=None, talla=None):
     def filtrar(df_in, skip=None):
         df_f = df_in
         if q:
             df_f = df_f[
-                df_f['nombre'].str.contains(q, case=False) | 
+                df_f['nombre'].str.contains(q, case=False) |
                 df_f['Referencia'].astype(str).str.contains(q, case=False)
             ]
         if categoria and skip != 'categoria':
@@ -60,23 +63,24 @@ def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None,
         "tallas": sorted([str(x) for x in filtrar(df, 'talla')["Talla"].unique()])
     }
 
+
 @router.get("/", response_class=HTMLResponse)
 async def ver_catalogo(request: Request, page: int = 1):
     templates = request.app.state.templates
-    df = load_data()
-    if df.empty:
+    df = request.app.state.df  # ✅ Desde memoria, no desde disco
+
+    if df is None or df.empty:
         return templates.TemplateResponse(request, "home.html", {"productos": [], "mensaje": "No hay productos disponibles."})
-    
+
     df_unique = df.drop_duplicates(subset=['Referencia'])
-    
+
     limit = 12
     start = (page - 1) * limit
     end = start + limit
     productos = df_unique.iloc[start:end].to_dict(orient="records")
-    
     has_more = len(df_unique) > end
     filtros = get_filtros_completos(df)
-    
+
     return templates.TemplateResponse(request, "home.html", {
         "productos": productos,
         "filtros": filtros,
@@ -84,8 +88,10 @@ async def ver_catalogo(request: Request, page: int = 1):
         "has_more": has_more
     })
 
+
 @router.get("/api/productos")
 async def api_productos(
+    request: Request,  # ✅ Agregado para acceder al caché
     page: int = 1,
     q: str = "",
     categoria: str = "",
@@ -94,10 +100,11 @@ async def api_productos(
     edad: str = "",
     talla: str = ""
 ):
-    df = load_data()
+    df = request.app.state.df  # ✅ Desde memoria
+
     if q:
         df = df[
-            df['nombre'].str.contains(q, case=False) | 
+            df['nombre'].str.contains(q, case=False) |
             df['Referencia'].astype(str).str.contains(q, case=False)
         ]
     if categoria:
@@ -110,45 +117,44 @@ async def api_productos(
         df = df[df['Edad'] == edad]
     if talla:
         df = df[df['Talla'] == talla]
-        
+
     df_unique = df.drop_duplicates(subset=['Referencia'])
-    
+
     limit = 12
     start = (page - 1) * limit
     end = start + limit
     productos = df_unique.iloc[start:end].to_dict(orient="records")
     has_more = len(df_unique) > end
-    
+
     return JSONResponse({
         "productos": productos,
         "has_more": has_more
     })
 
+
 @router.get("/buscar", response_class=HTMLResponse)
 async def buscar_productos(
-    request: Request, 
-    q: str = "", 
-    categoria: str = "", 
-    genero: str = "", 
+    request: Request,
+    q: str = "",
+    categoria: str = "",
+    genero: str = "",
     deporte: str = "",
     edad: str = "",
     talla: str = "",
     page: int = 1
 ):
     templates = request.app.state.templates
-    df_all = load_data()
+    df_all = request.app.state.df  # ✅ Desde memoria
     df = df_all.copy()
     mensaje = None
-    
+
     if q:
         df_search = df[
-            df['nombre'].str.contains(q, case=False) | 
+            df['nombre'].str.contains(q, case=False) |
             df['Referencia'].astype(str).str.contains(q, case=False)
         ]
         if df_search.empty:
             mensaje = f"No se encontraron resultados para '{q}'. Recuerda que el buscador solo funciona por nombre o referencia."
-            # Si no hay resultados de búsqueda, ignoramos el parámetro 'q' para los filtros
-            # de modo que el sidebar no se quede vacío y el usuario pueda seguir navegando.
             q_for_filters = ""
         else:
             df = df_search
@@ -166,21 +172,19 @@ async def buscar_productos(
         df = df[df['Edad'] == edad]
     if talla:
         df = df[df['Talla'] == talla]
-        
+
     df_unique = df.drop_duplicates(subset=['Referencia'])
-    
+
     limit = 12
     start = (page - 1) * limit
     end = start + limit
     productos = df_unique.iloc[start:end].to_dict(orient="records")
     has_more = len(df_unique) > end
-    
-    # Calcular opciones de filtros dinámicos basados en la selección actual
-    # Usamos q_for_filters para evitar que el sidebar se rompa si la búsqueda no dio resultados
+
     filtros = get_filtros_completos(df_all, q_for_filters, categoria, genero, deporte, edad, talla)
-    
+
     return templates.TemplateResponse(request, "home.html", {
-        "productos": productos, 
+        "productos": productos,
         "filtros": filtros,
         "query": q,
         "sel_cat": categoria,
@@ -193,49 +197,82 @@ async def buscar_productos(
         "mensaje": mensaje
     })
 
+
 @router.get("/producto/{referencia}", response_class=HTMLResponse)
 async def detalle_producto(request: Request, referencia: str):
     templates = request.app.state.templates
-    df = load_data()
+    df = request.app.state.df  # ✅ Desde memoria
+
     variantes = df[df['Referencia'].astype(str) == str(referencia)]
     if variantes.empty:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    
+
     producto = variantes.iloc[0].to_dict()
-    
-    # Unificar cantidad disponible por talla sumando el inventario de todas las tiendas
+
+    # Stock total (suma de todas las ciudades)
     tallas_agrupadas = variantes.groupby('Talla', sort=False)['Inventario'].sum().reset_index()
     tallas = tallas_agrupadas.to_dict(orient="records")
-    
-    # Calcular opciones de filtros siempre sobre el total de datos (Independientes)
+
+    # Stock disponible específicamente en la ciudad del usuario
+    ciudad_usuario = request.session.get("city", "")
+    tallas_ciudad = {}
+    if ciudad_usuario:
+        variantes_ciudad = variantes[variantes['Ciudad'].astype(str) == str(ciudad_usuario)]
+        if not variantes_ciudad.empty:
+            agrupado_ciudad = variantes_ciudad.groupby('Talla', sort=False)['Inventario'].sum().reset_index()
+            tallas_ciudad = {str(r['Talla']): int(r['Inventario']) for _, r in agrupado_ciudad.iterrows()}
+
+    # Incorporar stock de la ciudad a la lista de tallas
+    for t in tallas:
+        t['stock_ciudad'] = int(tallas_ciudad.get(str(t['Talla']), 0))
+
     filtros = get_filtros_completos(df)
-    
+
     return templates.TemplateResponse(request, "info.html", {
         "producto": producto,
         "tallas": tallas,
-        "filtros": filtros
+        "filtros": filtros,
+        "ciudad_usuario": ciudad_usuario,
     })
 
+
 @router.get("/api/sugerencias")
-async def api_sugerencias(q: str = ""):
+async def api_sugerencias(request: Request, q: str = ""):  # ✅ Request agregado
     if not q or len(q) < 2:
         return JSONResponse([])
-    
-    df = load_data()
-    
-    # Buscar solo en nombre y Referencia para ser consistente con la búsqueda
+
+    df = request.app.state.df  # ✅ Desde memoria
+
     nombres = df[df['nombre'].str.contains(q, case=False)]['nombre'].unique().tolist()
     referencias = df[df['Referencia'].astype(str).str.contains(q, case=False)]['Referencia'].unique().tolist()
-    
-    # Combinar sugerencias, eliminar duplicados y limitar resultados
+
     sugerencias = list(set(
-        nombres + 
+        nombres +
         [str(r) for r in referencias]
     ))[:10]
-    
+
     return JSONResponse(sugerencias)
 
-@router.get("/perfil", response_class=HTMLResponse)
-async def ver_perfil(request: Request):
-    templates = request.app.state.templates
-    return templates.TemplateResponse(request, "perfil.html", {})
+
+@router.post("/admin/recargar-csv")
+async def recargar_csv(request: Request):
+    """
+    Recarga el CSV en memoria sin reiniciar el servidor.
+    Útil cuando el inventario cambia tras una compra.
+    Protegido por el middleware de sesión (requiere login).
+    """
+    try:
+        nuevo_df = load_data()
+        if nuevo_df.empty:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "mensaje": "El CSV está vacío o no se encontró."}
+            )
+        request.app.state.df = nuevo_df
+        total = len(nuevo_df)
+        return JSONResponse({"ok": True, "mensaje": f"CSV recargado correctamente. {total} registros en memoria."})
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "mensaje": f"Error al recargar: {str(e)}"}
+        )
