@@ -35,6 +35,16 @@ def load_data():
         return pd.DataFrame()
 
 
+def filtrar_por_ciudad(df, ciudad):
+    """
+    Devuelve solo las filas cuya Ciudad coincide con la del usuario.
+    Si no hay ciudad o el df está vacío, devuelve el df original.
+    """
+    if df is None or df.empty or not ciudad or 'Ciudad' not in df.columns:
+        return df
+    return df[df['Ciudad'].astype(str) == str(ciudad)]
+
+
 def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None, edad=None, talla=None):
     def filtrar(df_in, skip=None):
         df_f = df_in
@@ -72,6 +82,10 @@ async def ver_catalogo(request: Request, page: int = 1):
     if df is None or df.empty:
         return templates.TemplateResponse(request, "home.html", {"productos": [], "mensaje": "No hay productos disponibles."})
 
+    # Filtrar por ciudad del usuario logueado
+    ciudad_usuario = request.session.get("city", "")
+    df = filtrar_por_ciudad(df, ciudad_usuario)
+
     df_unique = df.drop_duplicates(subset=['Referencia'])
 
     limit = 12
@@ -101,6 +115,10 @@ async def api_productos(
     talla: str = ""
 ):
     df = request.app.state.df  # ✅ Desde memoria
+
+    # Filtrar por ciudad del usuario logueado
+    ciudad_usuario = request.session.get("city", "")
+    df = filtrar_por_ciudad(df, ciudad_usuario)
 
     if q:
         df = df[
@@ -145,6 +163,11 @@ async def buscar_productos(
 ):
     templates = request.app.state.templates
     df_all = request.app.state.df  # ✅ Desde memoria
+
+    # Filtrar por ciudad del usuario logueado
+    ciudad_usuario = request.session.get("city", "")
+    df_all = filtrar_por_ciudad(df_all, ciudad_usuario)
+
     df = df_all.copy()
     mensaje = None
 
@@ -203,28 +226,21 @@ async def detalle_producto(request: Request, referencia: str):
     templates = request.app.state.templates
     df = request.app.state.df  # ✅ Desde memoria
 
+    # Filtrar por ciudad del usuario logueado
+    ciudad_usuario = request.session.get("city", "")
+    df = filtrar_por_ciudad(df, ciudad_usuario)
+
     variantes = df[df['Referencia'].astype(str) == str(referencia)]
     if variantes.empty:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     producto = variantes.iloc[0].to_dict()
 
-    # Stock total (suma de todas las ciudades)
+    # Tallas con su stock en la ciudad del usuario
     tallas_agrupadas = variantes.groupby('Talla', sort=False)['Inventario'].sum().reset_index()
     tallas = tallas_agrupadas.to_dict(orient="records")
-
-    # Stock disponible específicamente en la ciudad del usuario
-    ciudad_usuario = request.session.get("city", "")
-    tallas_ciudad = {}
-    if ciudad_usuario:
-        variantes_ciudad = variantes[variantes['Ciudad'].astype(str) == str(ciudad_usuario)]
-        if not variantes_ciudad.empty:
-            agrupado_ciudad = variantes_ciudad.groupby('Talla', sort=False)['Inventario'].sum().reset_index()
-            tallas_ciudad = {str(r['Talla']): int(r['Inventario']) for _, r in agrupado_ciudad.iterrows()}
-
-    # Incorporar stock de la ciudad a la lista de tallas
     for t in tallas:
-        t['stock_ciudad'] = int(tallas_ciudad.get(str(t['Talla']), 0))
+        t['stock_ciudad'] = int(t['Inventario'])
 
     filtros = get_filtros_completos(df)
 
@@ -242,6 +258,10 @@ async def api_sugerencias(request: Request, q: str = ""):  # ✅ Request agregad
         return JSONResponse([])
 
     df = request.app.state.df  # ✅ Desde memoria
+
+    # Filtrar por ciudad del usuario logueado
+    ciudad_usuario = request.session.get("city", "")
+    df = filtrar_por_ciudad(df, ciudad_usuario)
 
     nombres = df[df['nombre'].str.contains(q, case=False)]['nombre'].unique().tolist()
     referencias = df[df['Referencia'].astype(str).str.contains(q, case=False)]['Referencia'].unique().tolist()

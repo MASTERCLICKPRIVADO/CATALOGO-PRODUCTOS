@@ -39,6 +39,11 @@ async def login_post(request: Request, username: str = Form(...), password: str 
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "login.html", {"error": "Usuario o contraseña incorrectos"})
 
+@router.get("/perfil", response_class=HTMLResponse)
+async def perfil(request: Request):
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "perfil.html", {})
+
 @router.get("/logout")
 async def logout(request: Request):
     request.session.clear()
