@@ -3,18 +3,58 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.encoders import jsonable_encoder
 import pandas as pd
 
+from app import db
+
 router = APIRouter()
-DATA_CSV = "data.csv"
+
+# Mapeo de columnas snake_case de Postgres -> nombres "legacy" del CSV
+# que el resto de la app (templates, filtros) ya conoce.
+_DATA_COLUMN_MAP = {
+    "tienda": "Tienda",
+    "inventario": "Inventario",
+    "ciudad": "Ciudad",
+    "referencia": "Referencia",
+    "talla": "Talla",
+    "nombre": "nombre",
+    "division": "Division",
+    "precio_antes": "precio antes",
+    "genero": "Genero",
+    "edad": "Edad",
+    "deporte": "Deporte",
+    "tipo_producto": "Tipo producto",
+    "dcto": "%DCTO",
+    "imagen": "Imagen",
+    "precio_ahora": "Precio Ahora",
+    "categoria": "Categoria",
+    "subcategoria": "Subcategoria",
+    "talla_cm": "TallaCM",
+    "talla_co": "TallaCO",
+}
 
 
 def load_data():
     """
+    Lee la tabla `data` de Supabase y la devuelve como DataFrame con los
+    nombres de columna "legacy" que ya usan los templates y filtros.
     Solo se llama UNA vez al iniciar el servidor (desde factory.py lifespan).
-    No se llama en ningún endpoint.
     """
     try:
-        df = pd.read_csv(DATA_CSV, sep=';', encoding='latin-1', low_memory=False)
-        df.columns = [c.strip() for c in df.columns]
+        with db._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT tienda, inventario, ciudad, referencia, talla, nombre,
+                              division, precio_antes, genero, edad, deporte,
+                              tipo_producto, dcto, imagen, precio_ahora,
+                              categoria, subcategoria, talla_cm, talla_co
+                         FROM data"""
+                )
+                rows = cur.fetchall()
+
+        if not rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(rows)
+        df = df.rename(columns=_DATA_COLUMN_MAP)
 
         if 'Inventario' in df.columns:
             df['Inventario'] = pd.to_numeric(df['Inventario'], errors='coerce').fillna(0).astype(int)
@@ -31,11 +71,10 @@ def load_data():
         df['Talla'] = df['Talla'].fillna('N/A').astype(str)
         df['nombre'] = df['nombre'].fillna('Sin Nombre').astype(str)
 
-        # Reemplazar cualquier NaN restante para evitar errores de JSON (Out of range float values)
         df = df.fillna("")
-
         return df
-    except FileNotFoundError:
+    except Exception as e:
+        print(f"⚠️  Error cargando data desde Supabase: {e}")
         return pd.DataFrame()
 
 
@@ -281,8 +320,8 @@ async def api_sugerencias(request: Request, q: str = ""):  # ✅ Request agregad
 @router.post("/admin/recargar-csv")
 async def recargar_csv(request: Request):
     """
-    Recarga el CSV en memoria sin reiniciar el servidor.
-    Útil cuando el inventario cambia tras una compra.
+    Recarga el catálogo desde Supabase en memoria sin reiniciar el servidor.
+    Útil cuando el inventario cambia desde fuera de la app.
     Protegido por el middleware de sesión (requiere login).
     """
     try:
@@ -290,11 +329,11 @@ async def recargar_csv(request: Request):
         if nuevo_df.empty:
             return JSONResponse(
                 status_code=400,
-                content={"ok": False, "mensaje": "El CSV está vacío o no se encontró."}
+                content={"ok": False, "mensaje": "La tabla `data` está vacía o no se pudo leer."}
             )
         request.app.state.df = nuevo_df
         total = len(nuevo_df)
-        return JSONResponse({"ok": True, "mensaje": f"CSV recargado correctamente. {total} registros en memoria."})
+        return JSONResponse({"ok": True, "mensaje": f"Catálogo recargado desde Supabase. {total} filas en memoria."})
     except Exception as e:
         return JSONResponse(
             status_code=500,

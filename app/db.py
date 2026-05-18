@@ -1,188 +1,119 @@
 """
-Persistencia en CSV para el carrito de compras.
+Capa de persistencia contra Supabase Postgres.
 
-- carrito.csv : items agregados al carrito por usuario.
-- data.csv    : se actualiza directamente para descontar inventario por (Referencia, Talla, Ciudad).
+Tablas: usuarios, data (catálogo + inventario), carrito, reservas.
 
-Toda la persistencia se hace en CSV para mantener la consistencia con el resto del proyecto.
+El pooler de Supabase (puerto 6543) opera en modo Transaction, por lo que
+desactivamos los prepared statements server-side (`prepare_threshold=None`)
+para evitar problemas de estado entre conexiones reutilizadas.
 """
 
 import os
-import csv
 from datetime import datetime
-from threading import Lock
-import pandas as pd
 
-CARRITO_CSV = "carrito.csv"
-DATA_CSV = "data.csv"
-RESERVAS_CSV = "reservas.csv"
+import psycopg
+from psycopg.rows import dict_row
+from dotenv import load_dotenv
 
-CARRITO_COLUMNS = [
-    "id",
-    "usuario",
-    "referencia",
-    "talla",
-    "ciudad",
-    "nombre",
-    "precio",          # Precio "ahora" del catálogo (con dcto original ya aplicado)
-    "precio_antes",    # Precio antes del descuento original (precio Antes del catálogo)
-    "dcto_original",   # %DCTO del catálogo al momento de añadirse
-    "imagen",
-    "cantidad",
-    "fecha_agregado",
-]
+load_dotenv()
 
-RESERVAS_COLUMNS = [
-    "reserva_id",
-    "fecha",
-    "usuario",
-    "nombre",
-    "apellido",
-    "cedula",
-    "correo",
-    "celular",
-    "direccion",
-    "ciudad_envio",
-    "referencia",
-    "talla",
-    "ciudad_item",
-    "nombre_producto",
-    "precio_unitario",
-    "cantidad",
-    "subtotal",
-]
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "Falta DATABASE_URL en el entorno. Define la connection string del "
+        "pooler de Supabase (puerto 6543) en tu .env o en Render."
+    )
 
-# Lock para serializar escrituras concurrentes sobre los CSV.
-_lock = Lock()
+
+def _get_conn():
+    """Abre una conexión nueva contra Supabase. Cerrar con `with`."""
+    return psycopg.connect(
+        DATABASE_URL,
+        prepare_threshold=None,
+        row_factory=dict_row,
+        autocommit=False,
+    )
 
 
 def init_storage():
     """
-    Crea los archivos carrito.csv y reservas.csv si no existen, o los migra
-    agregando columnas faltantes sin perder los datos existentes.
+    Las tablas viven en Supabase (gestionadas por SQL migrations en el
+    dashboard). Este hook solo valida que la conexión funciona al arrancar.
     """
-    _init_csv(CARRITO_CSV, CARRITO_COLUMNS)
-    _init_csv(RESERVAS_CSV, RESERVAS_COLUMNS)
-
-
-def _init_csv(path: str, columns: list):
-    if not os.path.exists(path):
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=columns, delimiter=";")
-            writer.writeheader()
-        return
-
     try:
-        df = pd.read_csv(path, sep=";", encoding="utf-8", dtype=str).fillna("")
-    except Exception:
-        df = pd.DataFrame(columns=columns)
-
-    cambios = False
-    for col in columns:
-        if col not in df.columns:
-            df[col] = ""
-            cambios = True
-    if cambios:
-        df = df[columns]
-        df.to_csv(path, sep=";", encoding="utf-8", index=False)
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+    except Exception as e:
+        print(f"⚠️  No se pudo verificar la conexión a Supabase: {e}")
 
 
-def _leer_carrito_df():
-    if not os.path.exists(CARRITO_CSV) or os.path.getsize(CARRITO_CSV) == 0:
-        return pd.DataFrame(columns=CARRITO_COLUMNS)
-    try:
-        df = pd.read_csv(CARRITO_CSV, sep=";", encoding="utf-8", dtype=str).fillna("")
-        for col in CARRITO_COLUMNS:
-            if col not in df.columns:
-                df[col] = ""
-        return df[CARRITO_COLUMNS]
-    except Exception:
-        return pd.DataFrame(columns=CARRITO_COLUMNS)
+# ----------------------- USUARIOS -----------------------
 
-
-def _escribir_carrito_df(df: pd.DataFrame):
-    df = df[CARRITO_COLUMNS]
-    df.to_csv(CARRITO_CSV, sep=";", encoding="utf-8", index=False)
-
-
-def _siguiente_id(df: pd.DataFrame) -> int:
-    if df.empty:
-        return 1
-    try:
-        return int(pd.to_numeric(df["id"], errors="coerce").fillna(0).max()) + 1
-    except Exception:
-        return len(df) + 1
+def obtener_usuario(usuario):
+    """Devuelve dict {usuario, contrasenia, ciudad} o None."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT usuario, contrasenia, ciudad FROM usuarios WHERE usuario = %s",
+                (str(usuario),),
+            )
+            return cur.fetchone()
 
 
 # ----------------------- INVENTARIO -----------------------
 
-def _leer_data_df():
-    df = pd.read_csv(DATA_CSV, sep=";", encoding="latin-1", low_memory=False)
-    df.columns = [c.strip() for c in df.columns]
-    return df
-
-
-def descontar_inventario(referencia: str, talla: str, ciudad: str, cantidad: int = 1):
+def descontar_inventario(referencia, talla, ciudad, cantidad: int = 1):
     """
-    Descuenta `cantidad` unidades del inventario en data.csv, distribuyendo
-    entre las tiendas que coincidan con (Referencia, Talla, Ciudad).
-    Devuelve True solo si se pudo descontar la cantidad completa.
+    Descuenta `cantidad` unidades del inventario en `data`, distribuyendo
+    entre las filas (tiendas) que coincidan con (referencia, talla, ciudad).
+    Devuelve True solo si pudo descontar la cantidad completa.
     """
-    if not os.path.exists(DATA_CSV):
-        return False
-
-    df = _leer_data_df()
-    if "Inventario" not in df.columns:
-        return False
-    df["Inventario"] = pd.to_numeric(df["Inventario"], errors="coerce").fillna(0).astype(int)
-
-    mask = (
-        (df["Referencia"].astype(str) == str(referencia)) &
-        (df["Talla"].astype(str) == str(talla)) &
-        (df["Ciudad"].astype(str) == str(ciudad))
-    )
-    if not mask.any():
-        return False
-
     restante = int(cantidad)
-    for i in df.index[mask]:
-        if restante <= 0:
-            break
-        inv = int(df.at[i, "Inventario"])
-        if inv <= 0:
-            continue
-        quitar = min(inv, restante)
-        df.at[i, "Inventario"] = inv - quitar
-        restante -= quitar
-
-    df.to_csv(DATA_CSV, sep=";", encoding="latin-1", index=False)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, inventario
+                     FROM data
+                    WHERE referencia = %s AND talla = %s AND ciudad = %s
+                      AND inventario > 0
+                    ORDER BY id
+                    FOR UPDATE""",
+                (str(referencia), str(talla), str(ciudad)),
+            )
+            rows = cur.fetchall()
+            for r in rows:
+                if restante <= 0:
+                    break
+                quitar = min(int(r["inventario"]), restante)
+                cur.execute(
+                    "UPDATE data SET inventario = inventario - %s WHERE id = %s",
+                    (quitar, r["id"]),
+                )
+                restante -= quitar
+        conn.commit()
     return restante == 0
 
 
-def reponer_inventario(referencia: str, talla: str, ciudad: str, cantidad: int = 1):
-    """
-    Suma `cantidad` unidades al inventario en data.csv (sobre la primera
-    tienda que coincida con (Referencia, Talla, Ciudad)).
-    """
-    if not os.path.exists(DATA_CSV):
-        return False
-
-    df = _leer_data_df()
-    if "Inventario" not in df.columns:
-        return False
-    df["Inventario"] = pd.to_numeric(df["Inventario"], errors="coerce").fillna(0).astype(int)
-
-    mask = (
-        (df["Referencia"].astype(str) == str(referencia)) &
-        (df["Talla"].astype(str) == str(talla)) &
-        (df["Ciudad"].astype(str) == str(ciudad))
-    )
-    if not mask.any():
-        return False
-
-    first_idx = df.index[mask][0]
-    df.at[first_idx, "Inventario"] = int(df.at[first_idx, "Inventario"]) + int(cantidad)
-    df.to_csv(DATA_CSV, sep=";", encoding="latin-1", index=False)
+def reponer_inventario(referencia, talla, ciudad, cantidad: int = 1):
+    """Suma `cantidad` unidades sobre la primera fila que coincida."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id FROM data
+                    WHERE referencia = %s AND talla = %s AND ciudad = %s
+                    ORDER BY id LIMIT 1 FOR UPDATE""",
+                (str(referencia), str(talla), str(ciudad)),
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+            cur.execute(
+                "UPDATE data SET inventario = inventario + %s WHERE id = %s",
+                (int(cantidad), row["id"]),
+            )
+        conn.commit()
     return True
 
 
@@ -190,167 +121,179 @@ def reponer_inventario(referencia: str, talla: str, ciudad: str, cantidad: int =
 
 def agregar_item_carrito(usuario, referencia, talla, ciudad, nombre, precio, imagen,
                           precio_antes="", dcto_original=""):
-    """Agrega una unidad al carrito del usuario."""
-    with _lock:
-        df = _leer_carrito_df()
-        nuevo_id = _siguiente_id(df)
-        nuevo = {
-            "id": str(nuevo_id),
-            "usuario": str(usuario),
-            "referencia": str(referencia),
-            "talla": str(talla),
-            "ciudad": str(ciudad),
-            "nombre": str(nombre),
-            "precio": str(precio),
-            "precio_antes": str(precio_antes) if precio_antes is not None else "",
-            "dcto_original": str(dcto_original) if dcto_original is not None else "",
-            "imagen": str(imagen),
-            "cantidad": "1",
-            "fecha_agregado": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
-        _escribir_carrito_df(df)
-        return nuevo_id
+    """Agrega una unidad al carrito del usuario. Devuelve el id generado."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO carrito
+                       (usuario, referencia, talla, ciudad, nombre, precio,
+                        precio_antes, dcto_original, imagen, cantidad, fecha_agregado)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, NOW())
+                   RETURNING id""",
+                (
+                    str(usuario), str(referencia), str(talla), str(ciudad),
+                    str(nombre), str(precio),
+                    "" if precio_antes is None else str(precio_antes),
+                    "" if dcto_original is None else str(dcto_original),
+                    str(imagen),
+                ),
+            )
+            new_id = cur.fetchone()["id"]
+        conn.commit()
+    return new_id
 
 
 def obtener_carrito(usuario):
-    """Devuelve la lista de items del carrito del usuario."""
-    df = _leer_carrito_df()
-    if df.empty:
-        return []
-    items = df[df["usuario"] == str(usuario)].to_dict(orient="records")
-    items.sort(key=lambda r: r.get("fecha_agregado", ""), reverse=True)
+    """Devuelve los items del usuario como dicts (mismo shape que antes)."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, usuario, referencia, talla, ciudad, nombre, precio,
+                          precio_antes, dcto_original, imagen, cantidad, fecha_agregado
+                     FROM carrito
+                    WHERE usuario = %s
+                    ORDER BY fecha_agregado DESC, id DESC""",
+                (str(usuario),),
+            )
+            rows = cur.fetchall()
+    # Normalizar tipos al mismo formato que daba el CSV (strings, fecha ISO)
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["id"] = str(d["id"])
+        d["cantidad"] = str(d.get("cantidad", 1))
+        if d.get("fecha_agregado"):
+            d["fecha_agregado"] = d["fecha_agregado"].strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            d["fecha_agregado"] = ""
+        items.append(d)
     return items
 
 
 def contar_items(usuario) -> int:
-    df = _leer_carrito_df()
-    if df.empty:
-        return 0
-    sub = df[df["usuario"] == str(usuario)]
-    if sub.empty:
-        return 0
-    return int(pd.to_numeric(sub["cantidad"], errors="coerce").fillna(0).sum())
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(SUM(cantidad), 0) AS total FROM carrito WHERE usuario = %s",
+                (str(usuario),),
+            )
+            row = cur.fetchone()
+    return int(row["total"] or 0)
 
 
 def contar_items_en_carrito(usuario, referencia, talla, ciudad) -> int:
     """Cantidad total que el usuario ya tiene en su carrito para (ref, talla, ciudad)."""
-    df = _leer_carrito_df()
-    if df.empty:
-        return 0
-    sub = df[
-        (df["usuario"] == str(usuario)) &
-        (df["referencia"] == str(referencia)) &
-        (df["talla"] == str(talla)) &
-        (df["ciudad"] == str(ciudad))
-    ]
-    if sub.empty:
-        return 0
-    return int(pd.to_numeric(sub["cantidad"], errors="coerce").fillna(0).sum())
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COALESCE(SUM(cantidad), 0) AS total
+                     FROM carrito
+                    WHERE usuario = %s AND referencia = %s
+                      AND talla = %s AND ciudad = %s""",
+                (str(usuario), str(referencia), str(talla), str(ciudad)),
+            )
+            row = cur.fetchone()
+    return int(row["total"] or 0)
 
 
 def obtener_item(item_id, usuario):
-    df = _leer_carrito_df()
-    if df.empty:
-        return None
-    sub = df[(df["id"] == str(item_id)) & (df["usuario"] == str(usuario))]
-    if sub.empty:
-        return None
-    return sub.iloc[0].to_dict()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, usuario, referencia, talla, ciudad, nombre, precio,
+                          precio_antes, dcto_original, imagen, cantidad, fecha_agregado
+                     FROM carrito
+                    WHERE id = %s AND usuario = %s""",
+                (int(item_id), str(usuario)),
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
 
 
 def eliminar_item(item_id, usuario):
     """Elimina un item del carrito. Devuelve el item eliminado o None."""
-    with _lock:
-        df = _leer_carrito_df()
-        if df.empty:
-            return None
-        mask = (df["id"] == str(item_id)) & (df["usuario"] == str(usuario))
-        if not mask.any():
-            return None
-        item = df[mask].iloc[0].to_dict()
-        df = df[~mask]
-        _escribir_carrito_df(df)
-        return item
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """DELETE FROM carrito
+                    WHERE id = %s AND usuario = %s
+                  RETURNING id, usuario, referencia, talla, ciudad, nombre, precio,
+                            precio_antes, dcto_original, imagen, cantidad, fecha_agregado""",
+                (int(item_id), str(usuario)),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    if not row:
+        return None
+    d = dict(row)
+    d["id"] = str(d["id"])
+    d["cantidad"] = str(d.get("cantidad", 1))
+    return d
 
 
 def vaciar_carrito(usuario):
     """Vacía el carrito del usuario. Devuelve los items eliminados."""
-    with _lock:
-        df = _leer_carrito_df()
-        if df.empty:
-            return []
-        mask = df["usuario"] == str(usuario)
-        items = df[mask].to_dict(orient="records")
-        df = df[~mask]
-        _escribir_carrito_df(df)
-        return items
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """DELETE FROM carrito
+                    WHERE usuario = %s
+                  RETURNING id, usuario, referencia, talla, ciudad, nombre, precio,
+                            precio_antes, dcto_original, imagen, cantidad, fecha_agregado""",
+                (str(usuario),),
+            )
+            rows = cur.fetchall()
+        conn.commit()
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["id"] = str(d["id"])
+        d["cantidad"] = str(d.get("cantidad", 1))
+        items.append(d)
+    return items
 
 
 # ----------------------- RESERVAS -----------------------
 
-def _leer_reservas_df():
-    if not os.path.exists(RESERVAS_CSV) or os.path.getsize(RESERVAS_CSV) == 0:
-        return pd.DataFrame(columns=RESERVAS_COLUMNS)
-    try:
-        df = pd.read_csv(RESERVAS_CSV, sep=";", encoding="utf-8", dtype=str).fillna("")
-        for col in RESERVAS_COLUMNS:
-            if col not in df.columns:
-                df[col] = ""
-        return df[RESERVAS_COLUMNS]
-    except Exception:
-        return pd.DataFrame(columns=RESERVAS_COLUMNS)
-
-
-def _siguiente_reserva_id(df: pd.DataFrame) -> int:
-    if df.empty:
-        return 1
-    try:
-        return int(pd.to_numeric(df["reserva_id"], errors="coerce").fillna(0).max()) + 1
-    except Exception:
-        return len(df) + 1
-
-
 def guardar_reserva(usuario, datos_cliente: dict, items: list) -> int:
     """
-    Persiste una reserva en reservas.csv: una fila por item, todas comparten
-    el mismo `reserva_id` y los datos del cliente.
-
-    `datos_cliente` debe traer: nombre, apellido, cedula, correo, celular,
-                                direccion, ciudad_envio.
-    `items` debe traer dicts con: referencia, talla, ciudad_item,
-                                  nombre_producto, precio_unitario, cantidad.
+    Persiste una reserva en `reservas`: una fila por item, todas comparten
+    el mismo `reserva_id` (tomado de la secuencia `reservas_reserva_id_seq`).
     """
-    with _lock:
-        df = _leer_reservas_df()
-        reserva_id = _siguiente_reserva_id(df)
-        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nextval('reservas_reserva_id_seq') AS rid")
+            reserva_id = int(cur.fetchone()["rid"])
 
-        nuevas_filas = []
-        for it in items:
-            cantidad = int(it.get("cantidad", 1) or 1)
-            precio_unit = int(it.get("precio_unitario", 0) or 0)
-            nuevas_filas.append({
-                "reserva_id": str(reserva_id),
-                "fecha": fecha,
-                "usuario": str(usuario),
-                "nombre": str(datos_cliente.get("nombre", "")),
-                "apellido": str(datos_cliente.get("apellido", "")),
-                "cedula": str(datos_cliente.get("cedula", "")),
-                "correo": str(datos_cliente.get("correo", "")),
-                "celular": str(datos_cliente.get("celular", "")),
-                "direccion": str(datos_cliente.get("direccion", "")),
-                "ciudad_envio": str(datos_cliente.get("ciudad_envio", "")),
-                "referencia": str(it.get("referencia", "")),
-                "talla": str(it.get("talla", "")),
-                "ciudad_item": str(it.get("ciudad_item", "")),
-                "nombre_producto": str(it.get("nombre_producto", "")),
-                "precio_unitario": str(precio_unit),
-                "cantidad": str(cantidad),
-                "subtotal": str(precio_unit * cantidad),
-            })
-
-        df = pd.concat([df, pd.DataFrame(nuevas_filas)], ignore_index=True)
-        df = df[RESERVAS_COLUMNS]
-        df.to_csv(RESERVAS_CSV, sep=";", encoding="utf-8", index=False)
-        return reserva_id
+            for it in items:
+                cantidad = int(it.get("cantidad", 1) or 1)
+                precio_unit = int(it.get("precio_unitario", 0) or 0)
+                cur.execute(
+                    """INSERT INTO reservas
+                           (reserva_id, usuario, nombre, apellido, cedula,
+                            correo, celular, direccion, ciudad_envio,
+                            referencia, talla, ciudad_item, nombre_producto,
+                            precio_unitario, cantidad, subtotal)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        reserva_id,
+                        str(usuario),
+                        str(datos_cliente.get("nombre", "")),
+                        str(datos_cliente.get("apellido", "")),
+                        str(datos_cliente.get("cedula", "")),
+                        str(datos_cliente.get("correo", "")),
+                        str(datos_cliente.get("celular", "")),
+                        str(datos_cliente.get("direccion", "")),
+                        str(datos_cliente.get("ciudad_envio", "")),
+                        str(it.get("referencia", "")),
+                        str(it.get("talla", "")),
+                        str(it.get("ciudad_item", "")),
+                        str(it.get("nombre_producto", "")),
+                        precio_unit,
+                        cantidad,
+                        precio_unit * cantidad,
+                    ),
+                )
+        conn.commit()
+    return reserva_id
