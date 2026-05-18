@@ -7,6 +7,14 @@
         <form action="/buscar" method="get" id="filter-form" style="display: contents;">
             <!-- Removido el input oculto 'q' para que los filtros sean independientes de la búsqueda -->
             
+            <label style="font-weight: bold; margin-bottom: 5px;">Tipo producto</label>
+            <select name="tipo_producto" class="filter-select" onchange="this.form.submit()">
+                <option value="">Todos los Tipos</option>
+                {% for tp in filtros.tipos_producto %}
+                    <option value="{{ tp }}">{{ tp }}</option>
+                {% endfor %}
+            </select>
+
             <label style="font-weight: bold; margin-bottom: 5px;">Categoría</label>
             <select name="categoria" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todas las Categorías</option>

@@ -8,6 +8,14 @@
             <!-- Mantener la búsqueda actual al filtrar -->
             <input type="hidden" name="q" value="{{ query or '' }}">
             
+            <label style="font-weight: bold; margin-bottom: 5px;">Tipo producto</label>
+            <select name="tipo_producto" class="filter-select" onchange="this.form.submit()">
+                <option value="">Todos los Tipos</option>
+                {% for tp in filtros.tipos_producto %}
+                    <option value="{{ tp }}" {% if sel_tipo == tp %}selected{% endif %}>{{ tp }}</option>
+                {% endfor %}
+            </select>
+
             <label style="font-weight: bold; margin-bottom: 5px;">Categoría</label>
             <select name="categoria" class="filter-select" onchange="this.form.submit()">
                 <option value="">Todas las Categorías</option>
@@ -64,6 +72,7 @@
     <div class="search-container">
         <form action="/buscar" method="get" id="search-form" style="display: flex; gap: 10px; position: relative;">
             <!-- Mantener los filtros actuales al buscar -->
+            <input type="hidden" name="tipo_producto" value="{{ sel_tipo or '' }}">
             <input type="hidden" name="categoria" value="{{ sel_cat or '' }}">
             <input type="hidden" name="genero" value="{{ sel_gen or '' }}">
             <input type="hidden" name="deporte" value="{{ sel_dep or '' }}">

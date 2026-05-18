@@ -88,7 +88,8 @@ def filtrar_por_ciudad(df, ciudad):
     return df[df['Ciudad'].astype(str) == str(ciudad)]
 
 
-def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None, edad=None, talla=None):
+def get_filtros_completos(df, q=None, tipo_producto=None, categoria=None,
+                          genero=None, deporte=None, edad=None, talla=None):
     def filtrar(df_in, skip=None):
         df_f = df_in
         if q:
@@ -96,8 +97,10 @@ def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None,
                 df_f['nombre'].str.contains(q, case=False) |
                 df_f['Referencia'].astype(str).str.contains(q, case=False)
             ]
-        if categoria and skip != 'categoria':
-            df_f = df_f[df_f['Division'] == categoria]
+        if tipo_producto and skip != 'tipo_producto':
+            df_f = df_f[df_f['Division'] == tipo_producto]
+        if categoria and skip != 'categoria' and 'Categoria' in df_f.columns:
+            df_f = df_f[df_f['Categoria'] == categoria]
         if genero and skip != 'genero':
             df_f = df_f[df_f['Genero'] == genero]
         if deporte and skip != 'deporte':
@@ -108,12 +111,21 @@ def get_filtros_completos(df, q=None, categoria=None, genero=None, deporte=None,
             df_f = df_f[df_f['Talla'] == talla]
         return df_f
 
+    def _valores_unicos(df_in, columna):
+        if columna not in df_in.columns:
+            return []
+        return sorted([
+            str(x) for x in df_in[columna].unique()
+            if str(x).strip() and str(x).strip().lower() != 'nan'
+        ])
+
     return {
-        "categorias": sorted([str(x) for x in filtrar(df, 'categoria')["Division"].unique()]),
-        "generos": sorted([str(x) for x in filtrar(df, 'genero')["Genero"].unique()]),
-        "deportes": sorted([str(x) for x in filtrar(df, 'deporte')["Deporte"].unique()]),
-        "edades": sorted([str(x) for x in filtrar(df, 'edad')["Edad"].unique()]),
-        "tallas": sorted([str(x) for x in filtrar(df, 'talla')["Talla"].unique()])
+        "tipos_producto": _valores_unicos(filtrar(df, 'tipo_producto'), "Division"),
+        "categorias":     _valores_unicos(filtrar(df, 'categoria'),     "Categoria"),
+        "generos":        _valores_unicos(filtrar(df, 'genero'),        "Genero"),
+        "deportes":       _valores_unicos(filtrar(df, 'deporte'),       "Deporte"),
+        "edades":         _valores_unicos(filtrar(df, 'edad'),          "Edad"),
+        "tallas":         _valores_unicos(filtrar(df, 'talla'),         "Talla"),
     }
 
 
@@ -151,6 +163,7 @@ async def api_productos(
     request: Request,  # ✅ Agregado para acceder al caché
     page: int = 1,
     q: str = "",
+    tipo_producto: str = "",
     categoria: str = "",
     genero: str = "",
     deporte: str = "",
@@ -168,8 +181,10 @@ async def api_productos(
             df['nombre'].str.contains(q, case=False) |
             df['Referencia'].astype(str).str.contains(q, case=False)
         ]
-    if categoria:
-        df = df[df['Division'] == categoria]
+    if tipo_producto:
+        df = df[df['Division'] == tipo_producto]
+    if categoria and 'Categoria' in df.columns:
+        df = df[df['Categoria'] == categoria]
     if genero:
         df = df[df['Genero'] == genero]
     if deporte:
@@ -197,6 +212,7 @@ async def api_productos(
 async def buscar_productos(
     request: Request,
     q: str = "",
+    tipo_producto: str = "",
     categoria: str = "",
     genero: str = "",
     deporte: str = "",
@@ -228,8 +244,10 @@ async def buscar_productos(
     else:
         q_for_filters = ""
 
-    if categoria:
-        df = df[df['Division'] == categoria]
+    if tipo_producto:
+        df = df[df['Division'] == tipo_producto]
+    if categoria and 'Categoria' in df.columns:
+        df = df[df['Categoria'] == categoria]
     if genero:
         df = df[df['Genero'] == genero]
     if deporte:
@@ -247,12 +265,13 @@ async def buscar_productos(
     productos = df_unique.iloc[start:end].to_dict(orient="records")
     has_more = len(df_unique) > end
 
-    filtros = get_filtros_completos(df_all, q_for_filters, categoria, genero, deporte, edad, talla)
+    filtros = get_filtros_completos(df_all, q_for_filters, tipo_producto, categoria, genero, deporte, edad, talla)
 
     return templates.TemplateResponse(request, "home.html", {
         "productos": productos,
         "filtros": filtros,
         "query": q,
+        "sel_tipo": tipo_producto,
         "sel_cat": categoria,
         "sel_gen": genero,
         "sel_dep": deporte,
