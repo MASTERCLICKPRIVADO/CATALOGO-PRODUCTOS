@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
 import pandas as pd
 
 router = APIRouter()
@@ -12,7 +13,7 @@ def load_data():
     No se llama en ningún endpoint.
     """
     try:
-        df = pd.read_csv(DATA_CSV, sep=';', encoding='latin-1')
+        df = pd.read_csv(DATA_CSV, sep=';', encoding='latin-1', low_memory=False)
         df.columns = [c.strip() for c in df.columns]
 
         if 'Inventario' in df.columns:
@@ -29,6 +30,9 @@ def load_data():
         df['Edad'] = df['Edad'].fillna('Todas').astype(str)
         df['Talla'] = df['Talla'].fillna('N/A').astype(str)
         df['nombre'] = df['nombre'].fillna('Sin Nombre').astype(str)
+
+        # Reemplazar cualquier NaN restante para evitar errores de JSON (Out of range float values)
+        df = df.fillna("")
 
         return df
     except FileNotFoundError:
@@ -144,10 +148,10 @@ async def api_productos(
     productos = df_unique.iloc[start:end].to_dict(orient="records")
     has_more = len(df_unique) > end
 
-    return JSONResponse({
+    return JSONResponse(jsonable_encoder({
         "productos": productos,
         "has_more": has_more
-    })
+    }))
 
 
 @router.get("/buscar", response_class=HTMLResponse)

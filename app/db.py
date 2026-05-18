@@ -15,6 +15,7 @@ import pandas as pd
 
 CARRITO_CSV = "carrito.csv"
 DATA_CSV = "data.csv"
+RESERVAS_CSV = "reservas.csv"
 
 CARRITO_COLUMNS = [
     "id",
@@ -31,35 +32,59 @@ CARRITO_COLUMNS = [
     "fecha_agregado",
 ]
 
+RESERVAS_COLUMNS = [
+    "reserva_id",
+    "fecha",
+    "usuario",
+    "nombre",
+    "apellido",
+    "cedula",
+    "correo",
+    "celular",
+    "direccion",
+    "ciudad_envio",
+    "referencia",
+    "talla",
+    "ciudad_item",
+    "nombre_producto",
+    "precio_unitario",
+    "cantidad",
+    "subtotal",
+]
+
 # Lock para serializar escrituras concurrentes sobre los CSV.
 _lock = Lock()
 
 
 def init_storage():
     """
-    Crea el archivo carrito.csv si no existe, o lo migra agregando columnas
-    faltantes sin perder los datos existentes.
+    Crea los archivos carrito.csv y reservas.csv si no existen, o los migra
+    agregando columnas faltantes sin perder los datos existentes.
     """
-    if not os.path.exists(CARRITO_CSV):
-        with open(CARRITO_CSV, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=CARRITO_COLUMNS, delimiter=";")
+    _init_csv(CARRITO_CSV, CARRITO_COLUMNS)
+    _init_csv(RESERVAS_CSV, RESERVAS_COLUMNS)
+
+
+def _init_csv(path: str, columns: list):
+    if not os.path.exists(path):
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=columns, delimiter=";")
             writer.writeheader()
         return
 
-    # Migración: si faltan columnas nuevas, las agregamos vacías y reescribimos.
     try:
-        df = pd.read_csv(CARRITO_CSV, sep=";", encoding="utf-8", dtype=str).fillna("")
+        df = pd.read_csv(path, sep=";", encoding="utf-8", dtype=str).fillna("")
     except Exception:
-        df = pd.DataFrame(columns=CARRITO_COLUMNS)
+        df = pd.DataFrame(columns=columns)
 
     cambios = False
-    for col in CARRITO_COLUMNS:
+    for col in columns:
         if col not in df.columns:
             df[col] = ""
             cambios = True
     if cambios:
-        df = df[CARRITO_COLUMNS]
-        df.to_csv(CARRITO_CSV, sep=";", encoding="utf-8", index=False)
+        df = df[columns]
+        df.to_csv(path, sep=";", encoding="utf-8", index=False)
 
 
 def _leer_carrito_df():
@@ -91,21 +116,24 @@ def _siguiente_id(df: pd.DataFrame) -> int:
 
 # ----------------------- INVENTARIO -----------------------
 
-def _actualizar_inventario_csv(referencia: str, talla: str, ciudad: str, delta: int):
+def _leer_data_df():
+    df = pd.read_csv(DATA_CSV, sep=";", encoding="latin-1", low_memory=False)
+    df.columns = [c.strip() for c in df.columns]
+    return df
+
+
+def descontar_inventario(referencia: str, talla: str, ciudad: str, cantidad: int = 1):
     """
-    Modifica directamente data.csv sumando `delta` (puede ser negativo) al campo
-    Inventario de la fila que coincida con (Referencia, Talla, Ciudad).
-    Devuelve True si se aplicó el cambio.
+    Descuenta `cantidad` unidades del inventario en data.csv, distribuyendo
+    entre las tiendas que coincidan con (Referencia, Talla, Ciudad).
+    Devuelve True solo si se pudo descontar la cantidad completa.
     """
     if not os.path.exists(DATA_CSV):
         return False
 
-    df = pd.read_csv(DATA_CSV, sep=";", encoding="latin-1")
-    df.columns = [c.strip() for c in df.columns]
-
+    df = _leer_data_df()
     if "Inventario" not in df.columns:
         return False
-
     df["Inventario"] = pd.to_numeric(df["Inventario"], errors="coerce").fillna(0).astype(int)
 
     mask = (
@@ -113,23 +141,49 @@ def _actualizar_inventario_csv(referencia: str, talla: str, ciudad: str, delta: 
         (df["Talla"].astype(str) == str(talla)) &
         (df["Ciudad"].astype(str) == str(ciudad))
     )
-
     if not mask.any():
         return False
 
-    df.loc[mask, "Inventario"] = (df.loc[mask, "Inventario"] + int(delta)).clip(lower=0)
+    restante = int(cantidad)
+    for i in df.index[mask]:
+        if restante <= 0:
+            break
+        inv = int(df.at[i, "Inventario"])
+        if inv <= 0:
+            continue
+        quitar = min(inv, restante)
+        df.at[i, "Inventario"] = inv - quitar
+        restante -= quitar
+
     df.to_csv(DATA_CSV, sep=";", encoding="latin-1", index=False)
-    return True
-
-
-def descontar_inventario(referencia: str, talla: str, ciudad: str, cantidad: int = 1):
-    """Descuenta `cantidad` unidades del inventario en data.csv."""
-    return _actualizar_inventario_csv(referencia, talla, ciudad, -int(cantidad))
+    return restante == 0
 
 
 def reponer_inventario(referencia: str, talla: str, ciudad: str, cantidad: int = 1):
-    """Suma `cantidad` unidades de vuelta al inventario en data.csv."""
-    return _actualizar_inventario_csv(referencia, talla, ciudad, int(cantidad))
+    """
+    Suma `cantidad` unidades al inventario en data.csv (sobre la primera
+    tienda que coincida con (Referencia, Talla, Ciudad)).
+    """
+    if not os.path.exists(DATA_CSV):
+        return False
+
+    df = _leer_data_df()
+    if "Inventario" not in df.columns:
+        return False
+    df["Inventario"] = pd.to_numeric(df["Inventario"], errors="coerce").fillna(0).astype(int)
+
+    mask = (
+        (df["Referencia"].astype(str) == str(referencia)) &
+        (df["Talla"].astype(str) == str(talla)) &
+        (df["Ciudad"].astype(str) == str(ciudad))
+    )
+    if not mask.any():
+        return False
+
+    first_idx = df.index[mask][0]
+    df.at[first_idx, "Inventario"] = int(df.at[first_idx, "Inventario"]) + int(cantidad)
+    df.to_csv(DATA_CSV, sep=";", encoding="latin-1", index=False)
+    return True
 
 
 # ----------------------- CARRITO -----------------------
@@ -179,6 +233,22 @@ def contar_items(usuario) -> int:
     return int(pd.to_numeric(sub["cantidad"], errors="coerce").fillna(0).sum())
 
 
+def contar_items_en_carrito(usuario, referencia, talla, ciudad) -> int:
+    """Cantidad total que el usuario ya tiene en su carrito para (ref, talla, ciudad)."""
+    df = _leer_carrito_df()
+    if df.empty:
+        return 0
+    sub = df[
+        (df["usuario"] == str(usuario)) &
+        (df["referencia"] == str(referencia)) &
+        (df["talla"] == str(talla)) &
+        (df["ciudad"] == str(ciudad))
+    ]
+    if sub.empty:
+        return 0
+    return int(pd.to_numeric(sub["cantidad"], errors="coerce").fillna(0).sum())
+
+
 def obtener_item(item_id, usuario):
     df = _leer_carrito_df()
     if df.empty:
@@ -215,3 +285,72 @@ def vaciar_carrito(usuario):
         df = df[~mask]
         _escribir_carrito_df(df)
         return items
+
+
+# ----------------------- RESERVAS -----------------------
+
+def _leer_reservas_df():
+    if not os.path.exists(RESERVAS_CSV) or os.path.getsize(RESERVAS_CSV) == 0:
+        return pd.DataFrame(columns=RESERVAS_COLUMNS)
+    try:
+        df = pd.read_csv(RESERVAS_CSV, sep=";", encoding="utf-8", dtype=str).fillna("")
+        for col in RESERVAS_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        return df[RESERVAS_COLUMNS]
+    except Exception:
+        return pd.DataFrame(columns=RESERVAS_COLUMNS)
+
+
+def _siguiente_reserva_id(df: pd.DataFrame) -> int:
+    if df.empty:
+        return 1
+    try:
+        return int(pd.to_numeric(df["reserva_id"], errors="coerce").fillna(0).max()) + 1
+    except Exception:
+        return len(df) + 1
+
+
+def guardar_reserva(usuario, datos_cliente: dict, items: list) -> int:
+    """
+    Persiste una reserva en reservas.csv: una fila por item, todas comparten
+    el mismo `reserva_id` y los datos del cliente.
+
+    `datos_cliente` debe traer: nombre, apellido, cedula, correo, celular,
+                                direccion, ciudad_envio.
+    `items` debe traer dicts con: referencia, talla, ciudad_item,
+                                  nombre_producto, precio_unitario, cantidad.
+    """
+    with _lock:
+        df = _leer_reservas_df()
+        reserva_id = _siguiente_reserva_id(df)
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        nuevas_filas = []
+        for it in items:
+            cantidad = int(it.get("cantidad", 1) or 1)
+            precio_unit = int(it.get("precio_unitario", 0) or 0)
+            nuevas_filas.append({
+                "reserva_id": str(reserva_id),
+                "fecha": fecha,
+                "usuario": str(usuario),
+                "nombre": str(datos_cliente.get("nombre", "")),
+                "apellido": str(datos_cliente.get("apellido", "")),
+                "cedula": str(datos_cliente.get("cedula", "")),
+                "correo": str(datos_cliente.get("correo", "")),
+                "celular": str(datos_cliente.get("celular", "")),
+                "direccion": str(datos_cliente.get("direccion", "")),
+                "ciudad_envio": str(datos_cliente.get("ciudad_envio", "")),
+                "referencia": str(it.get("referencia", "")),
+                "talla": str(it.get("talla", "")),
+                "ciudad_item": str(it.get("ciudad_item", "")),
+                "nombre_producto": str(it.get("nombre_producto", "")),
+                "precio_unitario": str(precio_unit),
+                "cantidad": str(cantidad),
+                "subtotal": str(precio_unit * cantidad),
+            })
+
+        df = pd.concat([df, pd.DataFrame(nuevas_filas)], ignore_index=True)
+        df = df[RESERVAS_COLUMNS]
+        df.to_csv(RESERVAS_CSV, sep=";", encoding="utf-8", index=False)
+        return reserva_id

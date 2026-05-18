@@ -118,28 +118,12 @@ def _stock_disponible_ciudad(df, referencia, talla, ciudad) -> int:
     return int(pd.to_numeric(sub["Inventario"], errors="coerce").fillna(0).sum())
 
 
-def _fila_para_descuento(df, referencia, talla, ciudad):
-    """
-    Devuelve (Ciudad real, Talla) de la primera tienda con stock > 0 dentro de la ciudad
-    del usuario. Como una misma (referencia, talla, ciudad) puede tener varias tiendas,
-    descontamos de la primera con stock disponible.
-    """
-    sub = df[
-        (df["Referencia"].astype(str) == str(referencia)) &
-        (df["Talla"].astype(str) == str(talla)) &
-        (df["Ciudad"].astype(str) == str(ciudad))
-    ]
-    sub = sub[pd.to_numeric(sub["Inventario"], errors="coerce").fillna(0) > 0]
-    if sub.empty:
-        return None
-    return sub.iloc[0].to_dict()
-
-
 @router.post("/carrito/agregar")
 async def agregar_al_carrito(
     request: Request,
     referencia: str = Form(...),
     talla: str = Form(...),
+    cantidad: int = Form(1),
 ):
     usuario = request.session.get("user")
     ciudad = request.session.get("city")
@@ -147,6 +131,9 @@ async def agregar_al_carrito(
         return JSONResponse({"ok": False, "mensaje": "Debes iniciar sesión."}, status_code=401)
     if not ciudad:
         return JSONResponse({"ok": False, "mensaje": "Tu usuario no tiene ciudad asignada."}, status_code=400)
+
+    if cantidad < 1:
+        return JSONResponse({"ok": False, "mensaje": "La cantidad debe ser al menos 1."}, status_code=400)
 
     df = request.app.state.df
     if df is None or df.empty:
@@ -157,34 +144,26 @@ async def agregar_al_carrito(
         return JSONResponse({"ok": False, "mensaje": "Producto no encontrado."}, status_code=404)
 
     stock = _stock_disponible_ciudad(df, referencia, talla, ciudad)
-    if stock <= 0:
+    ya_en_carrito = db.contar_items_en_carrito(usuario, referencia, talla, ciudad)
+    disponible = stock - ya_en_carrito
+    if disponible <= 0:
+        if ya_en_carrito > 0:
+            return JSONResponse({
+                "ok": False,
+                "mensaje": f"Ya tienes {ya_en_carrito} unidad(es) de esa talla en tu carrito y no hay más stock disponible en {ciudad}."
+            }, status_code=400)
         return JSONResponse({
             "ok": False,
             "mensaje": f"No hay stock disponible de esa talla en {ciudad}."
         }, status_code=400)
-
-    fila = _fila_para_descuento(df, referencia, talla, ciudad)
-    if fila is None:
+    if disponible < cantidad:
         return JSONResponse({
             "ok": False,
-            "mensaje": f"No hay stock disponible de esa talla en {ciudad}."
+            "mensaje": (
+                f"Solo puedes agregar {disponible} unidad(es) más de esa talla en {ciudad} "
+                f"(stock: {stock}, ya en tu carrito: {ya_en_carrito})."
+            ),
         }, status_code=400)
-
-    # Descontar en data.csv y en el DataFrame en memoria
-    ok_persist = db.descontar_inventario(referencia, talla, ciudad, 1)
-    if not ok_persist:
-        return JSONResponse({"ok": False, "mensaje": "No se pudo actualizar el inventario."}, status_code=500)
-
-    # Descontar la primera fila con stock en memoria (mismo criterio que en disco)
-    mask_mem = (
-        (df["Referencia"].astype(str) == str(referencia)) &
-        (df["Talla"].astype(str) == str(talla)) &
-        (df["Ciudad"].astype(str) == str(ciudad)) &
-        (pd.to_numeric(df["Inventario"], errors="coerce").fillna(0) > 0)
-    )
-    idx = df.index[mask_mem]
-    if len(idx) > 0:
-        df.at[idx[0], "Inventario"] = int(df.at[idx[0], "Inventario"]) - 1
 
     nombre = producto_row.iloc[0].get("nombre", "")
     precio = producto_row.iloc[0].get("Precio Ahora", "")
@@ -192,25 +171,33 @@ async def agregar_al_carrito(
     dcto_original = producto_row.iloc[0].get("%DCTO", "")
     imagen = producto_row.iloc[0].get("Imagen", "")
 
-    item_id = db.agregar_item_carrito(
-        usuario=usuario,
-        referencia=referencia,
-        talla=talla,
-        ciudad=ciudad,
-        nombre=nombre,
-        precio=precio,
-        imagen=imagen,
-        precio_antes=precio_antes,
-        dcto_original=dcto_original,
-    )
+    last_id = None
+    for _ in range(int(cantidad)):
+        last_id = db.agregar_item_carrito(
+            usuario=usuario,
+            referencia=referencia,
+            talla=talla,
+            ciudad=ciudad,
+            nombre=nombre,
+            precio=precio,
+            imagen=imagen,
+            precio_antes=precio_antes,
+            dcto_original=dcto_original,
+        )
 
     total_items = db.contar_items(usuario)
-    stock_restante = _stock_disponible_ciudad(df, referencia, talla, ciudad)
+    stock_restante = max(disponible - int(cantidad), 0)
+
+    if cantidad == 1:
+        mensaje = f"'{nombre}' (Talla {talla}) agregado al carrito."
+    else:
+        mensaje = f"{cantidad} unidades de '{nombre}' (Talla {talla}) agregadas al carrito."
 
     return JSONResponse({
         "ok": True,
-        "mensaje": f"'{nombre}' (Talla {talla}) agregado al carrito.",
-        "item_id": item_id,
+        "mensaje": mensaje,
+        "item_id": last_id,
+        "cantidad_agregada": int(cantidad),
         "total_items": total_items,
         "stock_restante": stock_restante,
     })
@@ -246,20 +233,6 @@ async def eliminar_del_carrito(request: Request, item_id: str = Form(...)):
     if not item:
         return JSONResponse({"ok": False, "mensaje": "Item no encontrado."}, status_code=404)
 
-    # Reponer inventario en data.csv y en memoria
-    db.reponer_inventario(item["referencia"], item["talla"], item["ciudad"], int(item.get("cantidad", 1)))
-
-    df = request.app.state.df
-    if df is not None and not df.empty:
-        mask_mem = (
-            (df["Referencia"].astype(str) == str(item["referencia"])) &
-            (df["Talla"].astype(str) == str(item["talla"])) &
-            (df["Ciudad"].astype(str) == str(item["ciudad"]))
-        )
-        idx = df.index[mask_mem]
-        if len(idx) > 0:
-            df.at[idx[0], "Inventario"] = int(df.at[idx[0], "Inventario"]) + int(item.get("cantidad", 1))
-
     return JSONResponse({"ok": True, "mensaje": "Item eliminado.", "total_items": db.contar_items(usuario)})
 
 
@@ -269,21 +242,131 @@ async def vaciar_el_carrito(request: Request):
     if not usuario:
         return JSONResponse({"ok": False, "mensaje": "Debes iniciar sesión."}, status_code=401)
 
-    items = db.vaciar_carrito(usuario)
-    df = request.app.state.df
-    for it in items:
-        db.reponer_inventario(it["referencia"], it["talla"], it["ciudad"], int(it.get("cantidad", 1)))
-        if df is not None and not df.empty:
-            mask_mem = (
-                (df["Referencia"].astype(str) == str(it["referencia"])) &
-                (df["Talla"].astype(str) == str(it["talla"])) &
-                (df["Ciudad"].astype(str) == str(it["ciudad"]))
-            )
-            idx = df.index[mask_mem]
-            if len(idx) > 0:
-                df.at[idx[0], "Inventario"] = int(df.at[idx[0], "Inventario"]) + int(it.get("cantidad", 1))
-
+    db.vaciar_carrito(usuario)
     return JSONResponse({"ok": True, "mensaje": "Carrito vaciado.", "total_items": 0})
+
+
+@router.post("/carrito/reservar")
+async def reservar_carrito(
+    request: Request,
+    nombre: str = Form(...),
+    apellido: str = Form(...),
+    cedula: str = Form(...),
+    correo: str = Form(...),
+    celular: str = Form(...),
+    direccion: str = Form(...),
+    ciudad: str = Form(...),
+    acepta_tratamiento: str = Form(""),
+):
+    """
+    Confirma la reserva del carrito: valida los datos del cliente y el
+    consentimiento de tratamiento de datos, valida stock contra data.csv,
+    persiste la reserva en reservas.csv, descuenta el inventario y vacía
+    el carrito del usuario.
+    """
+    usuario = request.session.get("user")
+    if not usuario:
+        return JSONResponse({"ok": False, "mensaje": "Debes iniciar sesión."}, status_code=401)
+
+    # Consentimiento de tratamiento de datos (obligatorio)
+    if str(acepta_tratamiento).strip().lower() not in ("on", "true", "1", "yes", "si"):
+        return JSONResponse({
+            "ok": False,
+            "mensaje": "Debes aceptar el tratamiento de datos para hacer la reserva.",
+        }, status_code=400)
+
+    # Validar campos básicos no vacíos
+    campos = {
+        "nombre": nombre, "apellido": apellido, "cedula": cedula,
+        "correo": correo, "celular": celular, "direccion": direccion, "ciudad": ciudad,
+    }
+    faltantes = [k for k, v in campos.items() if not str(v).strip()]
+    if faltantes:
+        return JSONResponse({
+            "ok": False,
+            "mensaje": f"Faltan campos por completar: {', '.join(faltantes)}.",
+        }, status_code=400)
+
+    items = db.obtener_carrito(usuario)
+    if not items:
+        return JSONResponse({"ok": False, "mensaje": "Tu carrito está vacío."}, status_code=400)
+
+    df = request.app.state.df
+    if df is None or df.empty:
+        return JSONResponse({"ok": False, "mensaje": "Catálogo no disponible."}, status_code=500)
+
+    # Calcular precios finales (con descuentos promocionales aplicados)
+    resumen = calcular_carrito(items)
+    items_calc = resumen["items"]
+
+    # Agrupar por (referencia, talla, ciudad) sumando cantidades para validar stock
+    agrupado = {}
+    nombres = {}
+    for it in items_calc:
+        key = (str(it["referencia"]), str(it["talla"]), str(it["ciudad"]))
+        agrupado[key] = agrupado.get(key, 0) + int(it.get("cantidad", 1) or 1)
+        nombres.setdefault(key, it.get("nombre", str(it["referencia"])))
+
+    # Validar stock de TODOS antes de descontar nada (todo-o-nada)
+    for (ref, talla, ciudad_item), cantidad in agrupado.items():
+        stock = _stock_disponible_ciudad(df, ref, talla, ciudad_item)
+        if stock < cantidad:
+            return JSONResponse({
+                "ok": False,
+                "mensaje": (
+                    f"No hay stock suficiente para '{nombres[(ref, talla, ciudad_item)]}' "
+                    f"(Talla {talla}) en {ciudad_item}. Disponible: {stock}, solicitado: {cantidad}."
+                ),
+            }, status_code=400)
+
+    # Persistir la reserva en reservas.csv ANTES de mutar inventario
+    datos_cliente = {
+        "nombre": nombre.strip(),
+        "apellido": apellido.strip(),
+        "cedula": cedula.strip(),
+        "correo": correo.strip(),
+        "celular": celular.strip(),
+        "direccion": direccion.strip(),
+        "ciudad_envio": ciudad.strip(),
+    }
+    items_reserva = [{
+        "referencia": it["referencia"],
+        "talla": it["talla"],
+        "ciudad_item": it["ciudad"],
+        "nombre_producto": it.get("nombre", ""),
+        "precio_unitario": it.get("precio_final", 0),
+        "cantidad": int(it.get("cantidad", 1) or 1),
+    } for it in items_calc]
+    reserva_id = db.guardar_reserva(usuario, datos_cliente, items_reserva)
+
+    # Descontar inventario en disco y en memoria
+    for (ref, talla, ciudad_item), cantidad in agrupado.items():
+        db.descontar_inventario(ref, talla, ciudad_item, cantidad)
+
+        mask_mem = (
+            (df["Referencia"].astype(str) == ref) &
+            (df["Talla"].astype(str) == talla) &
+            (df["Ciudad"].astype(str) == ciudad_item)
+        )
+        restante = int(cantidad)
+        for i in df.index[mask_mem]:
+            if restante <= 0:
+                break
+            inv = int(df.at[i, "Inventario"])
+            if inv <= 0:
+                continue
+            quitar = min(inv, restante)
+            df.at[i, "Inventario"] = inv - quitar
+            restante -= quitar
+
+    db.vaciar_carrito(usuario)
+
+    return JSONResponse({
+        "ok": True,
+        "mensaje": f"¡Reserva #{reserva_id} confirmada! Tu pedido ha sido reservado.",
+        "reserva_id": reserva_id,
+        "total_items": 0,
+    })
 
 
 @router.get("/api/carrito/contador")

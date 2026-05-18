@@ -11,7 +11,7 @@ def load_users():
     if not os.path.exists(USUARIOS_CSV):
         return pd.DataFrame(columns=['Usuario', 'Contrasenia', 'Ciudad'])
     try:
-        df = pd.read_csv(USUARIOS_CSV, sep=';', encoding='utf-8')
+        df = pd.read_csv(USUARIOS_CSV, sep=';', encoding='utf-8', low_memory=False)
         df.columns = [c.strip() for c in df.columns]
         return df
     except Exception:

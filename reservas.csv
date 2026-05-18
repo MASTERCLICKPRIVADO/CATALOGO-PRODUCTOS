@@ -1,0 +1,4 @@
+reserva_id;fecha;usuario;nombre;apellido;cedula;correo;celular;direccion;ciudad_envio;referencia;talla;ciudad_item;nombre_producto;precio_unitario;cantidad;subtotal
+1;2026-05-17 22:22:44;andres@masterseries.com.co;santiago;morales;11;andres@gmail.com;1;2;g;JQ2620;7;Cartagena;GALAXY 7 M;279950;1;279950
+2;2026-05-17 22:47:59;andres@masterseries.com.co;santiago;morales;11;andres@gmail.com;1;2;g;ID8765;5.5;Cartagena;GALAXY 7 W;223960;1;223960
+2;2026-05-17 22:47:59;andres@masterseries.com.co;santiago;morales;11;andres@gmail.com;1;2;g;ID8765;5.5;Cartagena;GALAXY 7 W;223960;1;223960

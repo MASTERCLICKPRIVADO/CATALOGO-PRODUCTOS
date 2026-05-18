@@ -32,7 +32,7 @@
             <div>
                 <strong style="font-size: 18px;">🎉 ¡Promoción activa: {{ dcto_promocional }}% dto!</strong>
                 <div style="font-size: 13px; opacity: 0.9; margin-top: 3px;">
-                    Aplicada por llevar {{ cantidad }} artículos (se respeta el descuento más alto por producto).
+                    Aplicada por llevar {{ cantidad }} artículos.
                 </div>
             </div>
             {% if cantidad < 4 %}
@@ -127,9 +127,104 @@
                                border-radius: 12px; cursor: pointer;">
                     Vaciar carrito
                 </button>
-                <a href="/" class="btn" style="background: #8a8f64; padding: 12px 24px; text-decoration: none;">
+                <a href="/" class="btn" style="background: #8a8f64; padding: 12px 24px; text-decoration: none;text-align: center">
                     Seguir comprando
                 </a>
+                <button id="btn-reservar"
+                        style="background: #2e7d32; color: white; padding: 12px 28px; border: none;
+                               border-radius: 12px; cursor: pointer; font-weight: bold;">
+                    ✅ Hacer reserva
+                </button>
+            </div>
+
+            <!-- Modal de confirmación de reserva -->
+            <div id="modal-reserva" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+                        z-index: 9999; align-items: center; justify-content: center; padding: 20px; overflow-y: auto;">
+                <div style="background: white; max-width: 560px; width: 100%; border-radius: 20px;
+                            padding: 30px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto;">
+                    <h2 style="color: #2e7d32; margin: 0 0 8px 0;">Confirmar reserva</h2>
+                    <p style="color: #444; line-height: 1.5; margin: 6px 0 14px 0;">
+                        Reservas <strong>{{ cantidad }} artículo{{ 's' if cantidad != 1 else '' }}</strong>
+                        por un total de <strong>{{ total | currency }}</strong>. Completa tus datos:
+                    </p>
+
+                    <form id="form-reserva" style="display: grid; gap: 12px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                                Nombre
+                                <input type="text" name="nombre" required
+                                       style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                            </label>
+                            <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                                Apellido
+                                <input type="text" name="apellido" required
+                                       style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                            </label>
+                        </div>
+
+                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                            Cédula
+                            <input type="text" name="cedula" required inputmode="numeric" pattern="[0-9]*"
+                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                        </label>
+
+                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                            Correo
+                            <input type="email" name="correo" required
+                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                        </label>
+
+                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                            Celular
+                            <input type="tel" name="celular" required inputmode="numeric" pattern="[0-9+\-\s]*"
+                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                        </label>
+
+                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                            Dirección de envío
+                            <input type="text" name="direccion" required
+                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                        </label>
+
+                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
+                            Ciudad
+                            <input type="text" name="ciudad" required
+                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                        </label>
+
+                        
+
+                        <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #444;">
+                            <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required
+                                   style="margin-top: 3px;">
+                            <span>
+                                Acepto el <strong>tratamiento de datos</strong> conforme a la
+                                <a href="https://masterseries.com.co/politica-de-tratamiento-de-la-informacion"
+                                   target="_blank" rel="noopener noreferrer"
+                                   style="color: #2e7d32; text-decoration: underline;">
+                                   política de tratamiento de la información
+                                </a>.
+                            </span>
+                        </label>
+
+                        <p style="color: #c62828; font-size: 13px; margin: 4px 0;">
+                            ⚠️ Una vez confirmada, la reserva <strong>no podrá modificarse</strong> y el inventario será descontado.
+                        </p>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 6px;">
+                            <button type="button" id="btn-cancelar-reserva"
+                                    style="background: #eee; color: #444; padding: 10px 22px; border: none;
+                                           border-radius: 10px; cursor: pointer;">
+                                Cancelar
+                            </button>
+                            <button type="submit" id="btn-confirmar-reserva"
+                                    style="background: #2e7d32; color: white; padding: 10px 22px; border: none;
+                                           border-radius: 10px; cursor: pointer; font-weight: bold;">
+                                Confirmar reserva
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         {% else %}
             <div id="carrito-vacio" style="text-align: center; padding: 50px;">
@@ -221,7 +316,7 @@
                 if (resp.ok && data.ok) {
                     const div = document.getElementById('item-' + itemId);
                     if (div) div.remove();
-                    mostrarMsg('Item eliminado y stock repuesto.', true);
+                    mostrarMsg('Item eliminado del carrito.', true);
 
                     const badge = document.getElementById('cart-badge');
                     if (badge && typeof data.total_items === 'number') {
@@ -251,7 +346,7 @@
     const btnVaciar = document.getElementById('btn-vaciar');
     if (btnVaciar) {
         btnVaciar.addEventListener('click', async () => {
-            if (!confirm('¿Vaciar todo el carrito? El inventario se repondrá.')) return;
+            if (!confirm('¿Vaciar todo el carrito?')) return;
             btnVaciar.disabled = true;
             btnVaciar.textContent = 'Vaciando...';
 
@@ -269,6 +364,79 @@
                 mostrarMsg('Error de conexión.', false);
                 btnVaciar.disabled = false;
                 btnVaciar.textContent = 'Vaciar carrito';
+            }
+        });
+    }
+
+    // ----- Flujo de reserva con modal de confirmación -----
+    const modalReserva = document.getElementById('modal-reserva');
+    const btnReservar = document.getElementById('btn-reservar');
+    const btnCancelarReserva = document.getElementById('btn-cancelar-reserva');
+    const btnConfirmarReserva = document.getElementById('btn-confirmar-reserva');
+    const formReserva = document.getElementById('form-reserva');
+    const chkTratamiento = document.getElementById('chk-tratamiento');
+
+    function abrirModal() {
+        if (modalReserva) modalReserva.style.display = 'flex';
+    }
+    function cerrarModal() {
+        if (modalReserva) modalReserva.style.display = 'none';
+    }
+
+    if (btnReservar) {
+        btnReservar.addEventListener('click', abrirModal);
+    }
+    if (btnCancelarReserva) {
+        btnCancelarReserva.addEventListener('click', cerrarModal);
+    }
+    if (modalReserva) {
+        modalReserva.addEventListener('click', (e) => {
+            if (e.target === modalReserva) cerrarModal();
+        });
+    }
+
+    if (formReserva) {
+        formReserva.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+
+            if (chkTratamiento && !chkTratamiento.checked) {
+                mostrarMsg('Debes aceptar el tratamiento de datos para reservar.', false);
+                return;
+            }
+
+            btnConfirmarReserva.disabled = true;
+            btnConfirmarReserva.textContent = 'Procesando...';
+            if (btnCancelarReserva) btnCancelarReserva.disabled = true;
+
+            try {
+                const fd = new FormData(formReserva);
+                if (!fd.has('acepta_tratamiento')) {
+                    fd.set('acepta_tratamiento', chkTratamiento && chkTratamiento.checked ? 'on' : '');
+                }
+
+                const resp = await fetch('/carrito/reservar', { method: 'POST', body: fd });
+                const data = await resp.json();
+
+                if (resp.ok && data.ok) {
+                    cerrarModal();
+                    mostrarMsg('✅ ' + data.mensaje, true);
+                    const badge = document.getElementById('cart-badge');
+                    if (badge) {
+                        badge.textContent = '0';
+                        badge.style.display = 'none';
+                    }
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    mostrarMsg(data.mensaje || 'No se pudo reservar.', false);
+                    btnConfirmarReserva.disabled = false;
+                    btnConfirmarReserva.textContent = 'Confirmar reserva';
+                    if (btnCancelarReserva) btnCancelarReserva.disabled = false;
+                }
+            } catch {
+                mostrarMsg('Error de conexión.', false);
+                btnConfirmarReserva.disabled = false;
+                btnConfirmarReserva.textContent = 'Confirmar reserva';
+                if (btnCancelarReserva) btnCancelarReserva.disabled = false;
             }
         });
     }
