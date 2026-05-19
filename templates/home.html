@@ -62,10 +62,26 @@
             </a>
 
         </form>
+
+        <button type="button" id="ver-promocion-btn" class="filter-select" style="margin-top: 15px; text-align: center; background: #8a8f64; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border: none; height: 45px; cursor: pointer;">
+            Ver Promoción
+        </button>
     </div>
 {% endblock %}
 
 {% block content %}
+<!-- Modal Promoción -->
+<div id="promo-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+    <div style="position: relative; max-width: 90vw; max-height: 90vh;">
+        <button type="button" id="promo-close-btn" aria-label="Cerrar"
+                style="position: absolute; top: -15px; left: -15px; width: 40px; height: 40px; border-radius: 50%; border: none; background: #fff; color: #000; font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; line-height: 1;">
+            &times;
+        </button>
+        <img src="{{ url_for('static', path='img/promocion.jpeg') }}" alt="Promoción"
+             style="display: block; max-width: 90vw; max-height: 90vh; width: auto; height: auto; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    </div>
+</div>
+
 <section class="contenedor">
     <br><br>
     <!-- Buscador -->
@@ -94,6 +110,32 @@
         document.getElementById('filter-form').addEventListener('submit', () => {
             sessionStorage.setItem('sidebarOpen', 'false');
         });
+
+        (function setupPromoModal() {
+            const modal = document.getElementById('promo-modal');
+            const closeBtn = document.getElementById('promo-close-btn');
+            const openBtn = document.getElementById('ver-promocion-btn');
+            if (!modal || !closeBtn || !openBtn) return;
+
+            function openModal() {
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+            function closeModal() {
+                modal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+
+            closeBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+            openBtn.addEventListener('click', openModal);
+
+            {% if show_promo_on_load %}
+            window.addEventListener('DOMContentLoaded', openModal);
+            {% endif %}
+        })();
     </script>
 
     {% if mensaje %}

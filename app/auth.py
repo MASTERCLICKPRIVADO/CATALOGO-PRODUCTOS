@@ -18,6 +18,7 @@ async def login_post(request: Request, username: str = Form(...), password: str 
     if user and str(user.get("contrasenia")) == str(password):
         request.session["user"] = user["usuario"]
         request.session["city"] = user.get("ciudad", "")
+        request.session["show_promo"] = True
         return RedirectResponse(url="/", status_code=303)
 
     templates = request.app.state.templates

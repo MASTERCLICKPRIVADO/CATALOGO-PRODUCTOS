@@ -150,11 +150,14 @@ async def ver_catalogo(request: Request, page: int = 1):
     has_more = len(df_unique) > end
     filtros = get_filtros_completos(df)
 
+    show_promo_on_load = bool(request.session.pop("show_promo", False))
+
     return templates.TemplateResponse(request, "home.html", {
         "productos": productos,
         "filtros": filtros,
         "page": page,
-        "has_more": has_more
+        "has_more": has_more,
+        "show_promo_on_load": show_promo_on_load,
     })
 
 
