@@ -29,6 +29,7 @@ _DATA_COLUMN_MAP = {
     "subcategoria": "Subcategoria",
     "talla_cm": "TallaCM",
     "talla_co": "TallaCO",
+    "talla_u.s_co": "TallaUSCO",
 }
 
 
@@ -45,7 +46,7 @@ def load_data():
                     """SELECT tienda, inventario, ciudad, referencia, talla, nombre,
                               division, precio_antes, genero, edad, deporte,
                               tipo_producto, dcto, imagen, precio_ahora,
-                              categoria, subcategoria, talla_cm, talla_co
+                              categoria, subcategoria, talla_cm, talla_co, "talla_u.s_co"
                          FROM data"""
                 )
                 rows = cur.fetchall()
@@ -302,7 +303,7 @@ async def detalle_producto(request: Request, referencia: str):
     producto = variantes.iloc[0].to_dict()
 
     # Tallas con su stock en la ciudad del usuario
-    tallas_agrupadas = variantes.groupby('Talla', sort=False)['Inventario'].sum().reset_index()
+    tallas_agrupadas = variantes.groupby(['Talla', 'TallaCM', 'TallaUSCO'], sort=False)['Inventario'].sum().reset_index()
     tallas = tallas_agrupadas.to_dict(orient="records")
     for t in tallas:
         t['stock_ciudad'] = int(t['Inventario'])

@@ -144,30 +144,39 @@ def agregar_item_carrito(usuario, referencia, talla, ciudad, nombre, precio, ima
 
 
 def obtener_carrito(usuario):
-    """Devuelve los items del usuario como dicts (mismo shape que antes)."""
+    """Devuelve los items del usuario como dicts, incluyendo info de tallas desde data."""
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, usuario, referencia, talla, ciudad, nombre, precio,
-                          precio_antes, dcto_original, imagen, cantidad, fecha_agregado
-                     FROM carrito
-                    WHERE usuario = %s
-                    ORDER BY fecha_agregado DESC, id DESC""",
+                """SELECT c.id, c.usuario, c.referencia, c.talla, c.ciudad, c.nombre, c.precio,
+                          c.precio_antes, c.dcto_original, c.imagen, c.cantidad, c.fecha_agregado,
+                          d.talla_cm, d.talla_co, "talla_u.s_co" as talla_usco
+                     FROM carrito c
+                     LEFT JOIN data d ON c.referencia = d.referencia 
+                                     AND c.talla = d.talla 
+                                     AND c.ciudad = d.ciudad
+                    WHERE c.usuario = %s
+                    ORDER BY c.fecha_agregado DESC, c.id DESC""",
                 (str(usuario),),
             )
             rows = cur.fetchall()
-    # Normalizar tipos al mismo formato que daba el CSV (strings, fecha ISO)
-    items = []
+    
+    # Dado que un producto puede estar en varias tiendas en la misma ciudad, 
+    # el JOIN puede devolver duplicados. Agrupamos por id de carrito.
+    items_map = {}
     for r in rows:
-        d = dict(r)
-        d["id"] = str(d["id"])
-        d["cantidad"] = str(d.get("cantidad", 1))
-        if d.get("fecha_agregado"):
-            d["fecha_agregado"] = d["fecha_agregado"].strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            d["fecha_agregado"] = ""
-        items.append(d)
-    return items
+        cid = str(r["id"])
+        if cid not in items_map:
+            d = dict(r)
+            d["id"] = cid
+            d["cantidad"] = str(d.get("cantidad", 1))
+            if d.get("fecha_agregado"):
+                d["fecha_agregado"] = d["fecha_agregado"].strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                d["fecha_agregado"] = ""
+            items_map[cid] = d
+            
+    return list(items_map.values())
 
 
 def contar_items(usuario) -> int:
