@@ -17,7 +17,7 @@ _DATA_COLUMN_MAP = {
     "talla": "Talla",
     "nombre": "nombre",
     "division": "Division",
-    "precio_antes": "precio antes",
+    "precio_antes": "precio_antes",
     "genero": "Genero",
     "edad": "Edad",
     "deporte": "Deporte",
