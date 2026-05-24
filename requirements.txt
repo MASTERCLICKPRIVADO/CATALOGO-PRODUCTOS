@@ -8,3 +8,4 @@ numpy
 itsdangerous
 psycopg[binary]
 python-dotenv
+bcrypt

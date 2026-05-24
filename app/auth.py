@@ -1,5 +1,6 @@
 import re
 
+import bcrypt
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -8,6 +9,37 @@ from app import db
 router = APIRouter()
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+# Los hashes de bcrypt siempre empiezan con uno de estos prefijos seguido
+# del coste y el salt. Sirve para distinguir un hash de una contraseña en
+# texto plano (compatibilidad hacia atrás con usuarios anteriores al cambio).
+_BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
+
+
+def _hash_password(plain: str) -> str:
+    """Genera un hash bcrypt (str utf-8 listo para guardar en Postgres)."""
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(plain: str, stored: str) -> bool:
+    """
+    Verifica una contraseña contra lo almacenado en BD.
+
+    - Si `stored` es un hash bcrypt → usa `bcrypt.checkpw`.
+    - Si NO empieza con un prefijo bcrypt → asumimos legacy (texto plano)
+      y comparamos directo. Esto permite que los usuarios existentes
+      sigan entrando, y la migración ocurre en `login_post` (se re-hashea
+      tras un login exitoso).
+    """
+    if not stored:
+        return False
+    stored_str = str(stored)
+    if stored_str.startswith(_BCRYPT_PREFIXES):
+        try:
+            return bcrypt.checkpw(plain.encode("utf-8"), stored_str.encode("utf-8"))
+        except (ValueError, TypeError):
+            return False
+    return stored_str == str(plain)
 
 
 def _render_login(request: Request, *, error: str = None, form: dict = None):
@@ -44,12 +76,22 @@ async def login_post(
     form_data = {"username": username, "codigo_referido": codigo_referido}
 
     user = db.obtener_usuario(username)
-    if not user or str(user.get("contrasenia")) != str(password):
+    stored = user.get("contrasenia") if user else None
+    if not user or not _verify_password(password, stored):
         return _render_login(
             request,
             error="Usuario o contraseña incorrectos",
             form=form_data,
         )
+
+    # Migración transparente: si la contraseña estaba en texto plano (usuario
+    # creado antes del cambio a bcrypt), la re-hasheamos ahora que sabemos
+    # que es válida. Así, en el siguiente login ya se verifica con bcrypt.
+    if not str(stored).startswith(_BCRYPT_PREFIXES):
+        try:
+            db.actualizar_contrasenia(user["usuario"], _hash_password(password))
+        except Exception as e:
+            print(f"⚠️  No se pudo migrar la contraseña a bcrypt para {user['usuario']}: {e}")
 
     cod = (codigo_referido or "").strip()
     if not cod:
@@ -200,10 +242,11 @@ async def registro_post(
             form=form_data,
         )
 
-    # 3 + 4) Crear usuario (la función devuelve False si el correo ya existe)
+    # 3 + 4) Crear usuario (la función devuelve False si el correo ya existe).
+    # La contraseña SIEMPRE se guarda como hash bcrypt — nunca en texto plano.
     creado = db.crear_usuario(
         correo=correo_norm,
-        contrasenia=pwd,
+        contrasenia=_hash_password(pwd),
         ciudad=ciudad,
         codigo_referido=cod,
     )

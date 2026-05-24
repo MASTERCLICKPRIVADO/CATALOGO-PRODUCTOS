@@ -103,6 +103,20 @@ def actualizar_referido_y_ciudad(usuario, codigo_referido, ciudad):
         conn.commit()
 
 
+def actualizar_contrasenia(usuario, nueva_contrasenia):
+    """
+    Sobreescribe la contraseña almacenada del usuario. Se usa para migrar
+    contraseñas legacy en texto plano a bcrypt tras un login exitoso.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE usuarios SET contrasenia = %s WHERE usuario = %s",
+                (str(nueva_contrasenia), str(usuario)),
+            )
+        conn.commit()
+
+
 def crear_usuario(correo, contrasenia, ciudad, codigo_referido):
     """
     Inserta un nuevo usuario en `usuarios`. El correo se almacena en la
