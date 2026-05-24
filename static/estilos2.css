@@ -223,12 +223,71 @@ button:hover {
 }
 
 .search-input {
+  /* Mismo lenguaje visual que `.filter-select` para que el buscador
+     y los desplegables de filtros se sientan parte del mismo set. */
   width: 100%;
-  padding: 14px;
-  border-radius: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
   border: 1px solid rgba(138, 143, 100, 0.3);
-  font-size: 15px;
+  background: white;
+  font-size: 14px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search-input:focus {
+  border-color: #8a8f64;
+  box-shadow: 0 0 0 2px rgba(138, 143, 100, 0.18);
+}
+
+/* DROPDOWN DE SUGERENCIAS DEL BUSCADOR
+   Copia exacta del estilo de `.filter-options-wrapper` (los desplegables
+   del sidebar de filtros) para mantener consistencia visual. */
+.search-suggestions-wrapper {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid rgba(138, 143, 100, 0.3);
+  border-radius: 10px;
+  z-index: 1000;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  padding: 5px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: none;
+}
+
+.search-suggestions-wrapper.active {
+  display: block;
+}
+
+.search-suggestion-item {
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 5px;
+  color: #333;
+  user-select: none;
+}
+
+.search-suggestion-item:hover,
+.search-suggestion-item.is-active {
+  background: rgba(138, 143, 100, 0.12);
+}
+
+.search-suggestion-item .match {
+  font-weight: 700;
+  color: #8a8f64;
+}
+
+.search-suggestion-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: #999;
+  text-align: center;
 }
 
 .filters-container {
@@ -392,7 +451,10 @@ button:hover {
 /* PRODUCTS GRID */
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* auto-fill (NO auto-fit): los tracks vacíos se mantienen, así una
+     tarjeta sola conserva el mismo ancho que cuando la grid está llena
+     en vez de estirarse a todo el contenedor y deformar la imagen. */
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 20px;
   width: 100%;
 }
