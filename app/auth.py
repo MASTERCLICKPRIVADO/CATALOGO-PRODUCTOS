@@ -19,6 +19,9 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         request.session["user"] = user["usuario"]
         request.session["city"] = user.get("ciudad", "")
         request.session["show_promo"] = True
+        # Bandera que indica "este es el primer pageview tras el login";
+        # el cliente la usa para inicializar el marcador de sessionStorage.
+        request.session["fresh_login"] = True
         return RedirectResponse(url="/", status_code=303)
 
     templates = request.app.state.templates

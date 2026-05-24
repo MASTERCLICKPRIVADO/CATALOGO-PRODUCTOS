@@ -4,6 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %} MasterClick {% endblock %}</title>
+
+    <!--
+        Validación de sesión por-pestaña.
+        sessionStorage se borra automáticamente cuando el usuario cierra la
+        pestaña/navegador (a diferencia de las cookies, que algunos navegadores
+        restauran al reabrir). Usamos un marcador en sessionStorage como
+        prueba de que ESTA pestaña inició la sesión actual.
+    -->
+    <script>
+    (function validateBrowserSession() {
+        const isLoggedIn  = {{ 'true' if request.session.get('user') else 'false' }};
+        const isFreshLogin = {{ 'true' if request.session.get('fresh_login') else 'false' }};
+        const MARKER_KEY = 'mc_browser_session';
+
+        if (!isLoggedIn) {
+            // Sin sesión en el servidor: limpia cualquier marcador remanente.
+            sessionStorage.removeItem(MARKER_KEY);
+            return;
+        }
+
+        if (isFreshLogin) {
+            // Primer pageview tras /login → autoriza esta pestaña.
+            sessionStorage.setItem(MARKER_KEY, '1');
+            return;
+        }
+
+        // Hay sesión en el servidor, pero esta pestaña no tiene marcador.
+        // Significa que el navegador restauró la cookie tras cerrar/abrir,
+        // o que se abrió una pestaña nueva. Forzamos logout.
+        if (!sessionStorage.getItem(MARKER_KEY)) {
+            window.location.replace('/logout');
+        }
+    })();
+    </script>
+
     <link rel="stylesheet" href="{{ url_for('static', path='estilos2.css') }}">
 </head>
 <body>
@@ -79,17 +114,10 @@
             lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
         });
 
-        // Cerrar sesión automáticamente al cerrar la pestaña o el navegador
-        window.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden') {
-                // Opcional: podrías implementar un timer aquí si no quieres que sea instantáneo al cambiar de pestaña
-            }
-        });
-
-        window.addEventListener('pagehide', function() {
-            // navigator.sendBeacon es el método más confiable para enviar datos al servidor al cerrar la página
-            navigator.sendBeacon('/logout');
-        });
+        // (El cierre de sesión al cerrar pestaña/navegador se maneja con el
+        //  marcador de sessionStorage validado en el <head> de esta plantilla.
+        //  No usamos `pagehide` + beacon porque se disparaba en cada
+        //  navegación interna y producía logouts inesperados.)
 
         // Actualizar el badge del carrito al cargar cualquier página
         (function actualizarBadgeCarrito() {

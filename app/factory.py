@@ -44,6 +44,18 @@ def create_app():
             return RedirectResponse(url="/login")
 
         response = await call_next(request)
+
+        # Tras servir el PRIMER HTML después del login, limpiamos la bandera
+        # `fresh_login`. Así, en cualquier request posterior, el cliente sabe
+        # que debe validar el marcador de sessionStorage (y deslogear si no
+        # existe, lo cual indica que el navegador/pestaña fue cerrado y
+        # reabierto). Sólo limpiamos en respuestas HTML para no perder la
+        # bandera por culpa de calls a APIs (/api/..., /static, etc.).
+        if request.session.get("fresh_login"):
+            content_type = response.headers.get("content-type", "")
+            if "text/html" in content_type:
+                request.session.pop("fresh_login", None)
+
         return response
 
     # Sesiones
