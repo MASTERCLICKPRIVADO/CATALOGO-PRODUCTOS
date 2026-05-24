@@ -40,15 +40,28 @@ def calcular_carrito(items):
     Aplica la lógica de promociones por cantidad sobre los items del carrito.
 
     Reglas:
-      - 2 items en total → 20% mínimo por item
-      - 3 items en total → 30% mínimo por item
-      - 4+ items en total → 40% mínimo por item
-      - Si el item ya tiene un %DCTO original mayor, se respeta el más alto.
+      - El % promocional (20/30/40) se aplica SOBRE `precio_ahora` (es decir,
+        sobre el precio que ya viene con el descuento original de la prenda).
+        Se ENCADENA con el descuento original (no se compara como antes).
+
+          precio_final = precio_ahora * (1 - dcto_promo / 100)
+
+      - 2 items → 20% adicional sobre precio_ahora
+      - 3 items → 30% adicional sobre precio_ahora
+      - 4+ items → 40% adicional sobre precio_ahora
+
+      - El "descuento total" mostrado al usuario es la diferencia porcentual
+        entre `precio_final` y `precio_antes` (es decir, todo el ahorro
+        acumulado vs el precio original sin ningún descuento).
+
+          dcto_total = round((precio_antes - precio_final) / precio_antes * 100)
 
     Devuelve un dict con:
-      items: lista enriquecida (precio_antes_int, dcto_original_int, dcto_aplicado, precio_final, ahorro)
-      subtotal: suma de precios "antes" (precio sin ningún descuento)
-      total: suma de precios finales (con descuentos aplicados)
+      items: lista enriquecida (precio_antes_int, precio_ahora_int,
+             dcto_original_int, dcto_aplicado [= dcto_total visible],
+             precio_final, ahorro)
+      subtotal: suma de precios "antes" (sin ningún descuento)
+      total: suma de precios finales (con descuentos encadenados aplicados)
       ahorro: subtotal - total
       dcto_promocional: % promocional vigente por cantidad
       cantidad: número total de items
@@ -61,22 +74,40 @@ def calcular_carrito(items):
     items_calc = []
 
     for it in items:
-        precio_antes = _to_int(it.get("precio_antes") or it.get("precio"))
+        # Leemos precio_antes "puro" (sin fallback inmediato) para poder
+        # reconstruirlo desde precio_ahora + dcto_original si está vacío.
+        precio_antes = _to_int(it.get("precio_antes"))
         precio_ahora = _to_int(it.get("precio"))
         dcto_original = _to_int(it.get("dcto_original"))
 
-        # Si no hay precio "antes" (item viejo o sin dcto original), tomamos el precio "ahora" como base
+        # Defensa / retro-compat para items que se guardaron antes del fix
+        # del column-name en agregar_al_carrito (cuando precio_antes quedaba
+        # vacío en la BD). Si tenemos el % de descuento original y el precio
+        # actual, podemos recalcular el precio antes:
+        #     precio_antes = precio_ahora / (1 - dcto_original/100)
         if precio_antes <= 0:
-            precio_antes = precio_ahora
+            if precio_ahora > 0 and 0 < dcto_original < 100:
+                precio_antes = int(round(precio_ahora * 100 / (100 - dcto_original)))
+            else:
+                precio_antes = precio_ahora
+        if precio_ahora <= 0:
+            precio_ahora = precio_antes
 
-        # El descuento aplicado es el MAYOR entre el original y el promocional
-        dcto_aplicado = max(dcto_original, dcto_promo)
-
-        # Precio final: precio_antes * (1 - dcto/100), redondeado a entero
-        if dcto_aplicado > 0:
-            precio_final = int(round(precio_antes * (100 - dcto_aplicado) / 100))
+        # El descuento promocional se aplica SOBRE precio_ahora
+        # (encadenado, no sustituye al original).
+        if dcto_promo > 0:
+            precio_final = int(round(precio_ahora * (100 - dcto_promo) / 100))
         else:
-            precio_final = precio_antes
+            precio_final = precio_ahora
+
+        # Descuento total visible = diferencia porcentual entre precio_final
+        # y precio_antes (original sin ningún descuento).
+        if precio_antes > 0:
+            dcto_total_visible = int(round(
+                (precio_antes - precio_final) * 100 / precio_antes
+            ))
+        else:
+            dcto_total_visible = 0
 
         ahorro_item = precio_antes - precio_final
         subtotal += precio_antes
@@ -87,8 +118,12 @@ def calcular_carrito(items):
             "precio_antes_int": precio_antes,
             "precio_ahora_int": precio_ahora,
             "dcto_original_int": dcto_original,
-            "dcto_aplicado": dcto_aplicado,
-            "dcto_es_promocional": dcto_aplicado == dcto_promo and dcto_promo > dcto_original,
+            # `dcto_aplicado` ahora representa el descuento TOTAL acumulado
+            # respecto al precio_antes (lo que el cliente debe ver).
+            "dcto_aplicado": dcto_total_visible,
+            # True cuando hay descuento promocional activo (encadenado encima
+            # del original). Sirve para colorear el badge distinto.
+            "dcto_es_promocional": dcto_promo > 0,
             "precio_final": precio_final,
             "ahorro_item": ahorro_item,
         })
@@ -167,7 +202,12 @@ async def agregar_al_carrito(
 
     nombre = producto_row.iloc[0].get("nombre", "")
     precio = producto_row.iloc[0].get("Precio Ahora", "")
-    precio_antes = producto_row.iloc[0].get("precio Antes", "")
+    # OJO: el DataFrame mantiene la columna como 'precio_antes' (ver
+    # _DATA_COLUMN_MAP en home.py). Anteriormente buscábamos "precio Antes",
+    # que no existía y caía como "" → entonces calcular_carrito hacía
+    # `precio_antes = precio_ahora` por fallback, y el descuento mostrado
+    # quedaba solo con el % promocional en vez del acumulado.
+    precio_antes = producto_row.iloc[0].get("precio_antes", "")
     dcto_original = producto_row.iloc[0].get("%DCTO", "")
     imagen = producto_row.iloc[0].get("Imagen", "")
 

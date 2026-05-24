@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %} Crear Cuenta - MasterClick {% endblock %}
+
+{% block content %}
+<div class="contenedor" style="display: flex; justify-content: center; align-items: center; flex: 1; padding: 20px 15px;">
+    <div class="carta" style="max-width: 440px; width: 100%; padding: 36px; background: white; border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.06);">
+        <h2 style="margin-bottom: 6px; color: #8a8f64;">Crear Cuenta</h2>
+        <p style="color: #777; font-size: 13px; margin-bottom: 20px;">
+            Regístrate con tu correo y tu <strong>código de referido</strong>.
+        </p>
+
+        {% if error %}
+        <div style="background-color: #ffebee; color: #c62828; padding: 10px 12px;
+                    border-radius: 8px; margin-bottom: 16px; text-align: center;
+                    font-size: 13px;">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form action="/registro" method="post" autocomplete="off">
+            <div style="margin-bottom: 14px;">
+                <label for="correo" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px;">
+                    Correo electrónico
+                </label>
+                <input type="email" id="correo" name="correo" class="search-input"
+                       placeholder="tu@email.com" required
+                       value="{{ form.correo or '' }}">
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label for="contrasenia" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px;">
+                    Contraseña
+                </label>
+                <input type="password" id="contrasenia" name="contrasenia" class="search-input"
+                       placeholder="Mínimo 6 caracteres" minlength="6" required>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label for="contrasenia2" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px;">
+                    Confirmar contraseña
+                </label>
+                <input type="password" id="contrasenia2" name="contrasenia2" class="search-input"
+                       placeholder="Repite tu contraseña" minlength="6" required>
+            </div>
+
+            <div style="margin-bottom: 22px;">
+                <label for="codigo_referido" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px;">
+                    Código de referido
+                </label>
+                <input type="text" id="codigo_referido" name="codigo_referido" class="search-input"
+                       placeholder="Ej. ABC123" required
+                       value="{{ form.codigo_referido or '' }}"
+                       style="text-transform: uppercase;">
+                <p style="margin: 6px 2px 0; color: #888; font-size: 11px;">
+                    El código determina la ciudad cuyo inventario verás en tu cuenta.
+                </p>
+            </div>
+
+            <button type="submit" style="background: #8a8f64; color: white;">Crear cuenta</button>
+        </form>
+
+        <p style="text-align: center; margin-top: 16px; font-size: 13px; color: #555;">
+            ¿Ya tienes cuenta?
+            <a href="/login" style="color: #8a8f64; font-weight: 600; text-decoration: none;">
+                Inicia sesión
+            </a>
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<p>Crea una cuenta para acceder al catálogo de tu ciudad.</p>
+{% endblock %}

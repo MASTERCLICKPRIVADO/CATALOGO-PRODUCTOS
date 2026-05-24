@@ -522,6 +522,148 @@ button:hover {
     }
 }
 
+/* MODAL DE RESERVA — compacto y sin scroll en ningún tamaño */
+.reserva-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    /* SIN overflow: el modal cabe entero */
+}
+
+.reserva-modal-overlay.active {
+    display: flex;
+}
+
+.reserva-modal-card {
+    background: white;
+    width: 100%;
+    max-width: 520px;
+    border-radius: 18px;
+    padding: 18px 22px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    /* SIN max-height ni overflow */
+}
+
+.reserva-modal-card h2 {
+    color: #2e7d32;
+    margin: 0 0 4px 0;
+    font-size: 18px;
+}
+
+.reserva-subtitle {
+    color: #444;
+    font-size: 13px;
+    line-height: 1.35;
+    margin: 0 0 12px 0;
+}
+
+.reserva-form {
+    display: grid;
+    gap: 8px;
+}
+
+.reserva-form .row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.reserva-form label.field {
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+    color: #666;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.reserva-form label.field input {
+    margin-top: 3px;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 400;
+    color: #222;
+    text-transform: none;
+    letter-spacing: normal;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.reserva-form label.field input:focus {
+    outline: none;
+    border-color: #8a8f64;
+    box-shadow: 0 0 0 2px rgba(138,143,100,0.15);
+}
+
+.reserva-chk-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 11px;
+    color: #444;
+    line-height: 1.35;
+    margin-top: 2px;
+}
+
+.reserva-chk-row input[type="checkbox"] {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.reserva-warning {
+    color: #c62828;
+    font-size: 11px;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.reserva-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.reserva-btns button {
+    padding: 9px 18px;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.reserva-btn-cancel {
+    background: #eee;
+    color: #444;
+}
+
+.reserva-btn-confirm {
+    background: #2e7d32;
+    color: white;
+    font-weight: bold;
+}
+
+/* Pantallas muy estrechas: reducir aún más para que todo quepa */
+@media (max-width: 380px) {
+    .reserva-modal-card {
+        padding: 14px 16px;
+    }
+    .reserva-form {
+        gap: 6px;
+    }
+    .reserva-form .row-2 {
+        gap: 6px;
+    }
+}
+
 .footer {
     background: #333;
     color: white;

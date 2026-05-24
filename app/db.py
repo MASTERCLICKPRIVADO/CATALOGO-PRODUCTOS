@@ -32,6 +32,7 @@ def _get_conn():
         prepare_threshold=None,
         row_factory=dict_row,
         autocommit=False,
+        options="-c timezone=America/Bogota",
     )
 
 
@@ -60,6 +61,56 @@ def obtener_usuario(usuario):
                 (str(usuario),),
             )
             return cur.fetchone()
+
+
+def obtener_referido(codigo):
+    """
+    Busca un código en `directorio_empleados`. Devuelve
+    dict {codigo, nombre, ciudad} o None si no existe.
+    El match es case-insensitive y tolerante a espacios alrededor.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT codigo, nombre, ciudad
+                     FROM directorio_empleados
+                    WHERE LOWER(TRIM(codigo)) = LOWER(TRIM(%s))
+                    LIMIT 1""",
+                (str(codigo),),
+            )
+            return cur.fetchone()
+
+
+def crear_usuario(correo, contrasenia, ciudad, codigo_referido):
+    """
+    Inserta un nuevo usuario en `usuarios`. El correo se almacena en la
+    columna `usuario` (que es también el identificador de login).
+
+    Devuelve True si lo creó; False si el correo ya estaba registrado.
+    Cualquier otro error se propaga.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            # Idempotencia: si el correo ya existe, no hacemos nada
+            cur.execute(
+                "SELECT 1 FROM usuarios WHERE LOWER(usuario) = LOWER(%s) LIMIT 1",
+                (str(correo),),
+            )
+            if cur.fetchone():
+                return False
+
+            cur.execute(
+                """INSERT INTO usuarios (usuario, contrasenia, ciudad, codigo_referido)
+                   VALUES (%s, %s, %s, %s)""",
+                (
+                    str(correo).strip(),
+                    str(contrasenia),
+                    str(ciudad).strip(),
+                    str(codigo_referido).strip(),
+                ),
+            )
+        conn.commit()
+    return True
 
 
 # ----------------------- INVENTARIO -----------------------

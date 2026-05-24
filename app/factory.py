@@ -36,7 +36,7 @@ def create_app():
     # Middleware de Autenticación
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        public_paths = ["/login", "/static"]
+        public_paths = ["/login", "/registro", "/static"]
         path = request.url.path
         is_public = any(path.startswith(p) for p in public_paths)
 

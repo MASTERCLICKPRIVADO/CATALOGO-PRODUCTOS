@@ -7,12 +7,13 @@
 <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 12px;">
     <h4 style="color: #8a8f64; margin-bottom: 10px;">Promociones por cantidad</h4>
     <ul style="font-size: 13px; color: #555; padding-left: 18px; line-height: 1.7;">
-        <li>2 artículos → <strong>20%</strong> dcto</li>
-        <li>3 artículos → <strong>30%</strong> dcto</li>
-        <li>4+ artículos → <strong>40%</strong> dcto</li>
+        <li>2 artículos → <strong>20%</strong> adicional</li>
+        <li>3 artículos → <strong>30%</strong> adicional</li>
+        <li>4+ artículos → <strong>40%</strong> adicional</li>
     </ul>
     <p style="font-size: 12px; color: #888; margin-top: 8px;">
-        Si un artículo ya tiene descuento, se aplica el más alto.
+        El % adicional se aplica sobre el precio actual de cada prenda
+        (incluso si ya tiene descuento), acumulando el ahorro total.
     </p>
 </div>
 {% endblock %}
@@ -30,9 +31,9 @@
                     padding: 15px 20px; border-radius: 16px; margin-bottom: 20px;
                     display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
-                <strong style="font-size: 18px;">🎉 ¡Promoción activa: {{ dcto_promocional }}% dto!</strong>
+                <strong style="font-size: 18px;">🎉 ¡Promoción activa: {{ dcto_promocional }}% adicional!</strong>
                 <div style="font-size: 13px; opacity: 0.9; margin-top: 3px;">
-                    Aplicada por llevar {{ cantidad }} artículos.
+                    Aplicado sobre el precio actual por llevar {{ cantidad }} artículos.
                 </div>
             </div>
             {% if cantidad < 4 %}
@@ -44,7 +45,7 @@
         {% elif cantidad == 1 %}
         <div style="background: #fff8e1; color: #8a6d00; padding: 12px 20px; border-radius: 16px;
                     margin-bottom: 20px; font-size: 14px;">
-            💡 Agrega otro artículo y obtén <strong>20% de descuento</strong> en tu compra.
+            💡 Agrega otro artículo y obtén <strong>20% adicional</strong> sobre el precio actual.
         </div>
         {% endif %}
 
@@ -53,6 +54,7 @@
                 {% for item in items %}
                 <div class="Reserva-item cart-item-card" id="item-{{ item.id }}"
                      data-precio-antes="{{ item.precio_antes_int }}"
+                     data-precio-ahora="{{ item.precio_ahora_int }}"
                      data-dcto-original="{{ item.dcto_original_int }}">
 
                     <!-- Imagen -->
@@ -138,88 +140,67 @@
             </div>
 
             <!-- Modal de confirmación de reserva -->
-            <div id="modal-reserva" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-                        z-index: 9999; align-items: center; justify-content: center; padding: 20px; overflow-y: auto;">
-                <div style="background: white; max-width: 560px; width: 100%; border-radius: 20px;
-                            padding: 30px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto;">
-                    <h2 style="color: #2e7d32; margin: 0 0 8px 0;">Confirmar reserva</h2>
-                    <p style="color: #444; line-height: 1.5; margin: 6px 0 14px 0;">
+            <div id="modal-reserva" class="reserva-modal-overlay">
+                <div class="reserva-modal-card">
+                    <h2>Confirmar reserva</h2>
+                    <p class="reserva-subtitle">
                         Reservas <strong>{{ cantidad }} artículo{{ 's' if cantidad != 1 else '' }}</strong>
-                        por un total de <strong>{{ total | currency }}</strong>. Completa tus datos:
+                        por <strong>{{ total | currency }}</strong>. Completa tus datos:
                     </p>
 
-                    <form id="form-reserva" style="display: grid; gap: 12px;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                            <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                                Nombre
-                                <input type="text" name="nombre" required
-                                       style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                    <form id="form-reserva" class="reserva-form">
+                        <div class="row-2">
+                            <label class="field">Nombre
+                                <input type="text" name="nombre" required>
                             </label>
-                            <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                                Apellido
-                                <input type="text" name="apellido" required
-                                       style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                            <label class="field">Apellido
+                                <input type="text" name="apellido" required>
                             </label>
                         </div>
 
-                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                            Cédula
-                            <input type="text" name="cedula" required inputmode="numeric" pattern="[0-9]*"
-                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                        <div class="row-2">
+                            <label class="field">Cédula
+                                <input type="text" name="cedula" required inputmode="numeric" pattern="[0-9]*">
+                            </label>
+                            <label class="field">Celular
+                                <input type="tel" name="celular" required inputmode="numeric" pattern="[0-9+\-\s]*">
+                            </label>
+                        </div>
+
+                        <label class="field">Correo electrónico
+                            <input type="email" name="correo" required>
                         </label>
 
-                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                            Correo
-                            <input type="email" name="correo" required
-                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
-                        </label>
+                        <div class="row-2">
+                            <label class="field">Dirección
+                                <input type="text" name="direccion" required>
+                            </label>
+                            <label class="field">Ciudad
+                                <input type="text" name="ciudad" required>
+                            </label>
+                        </div>
 
-                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                            Celular
-                            <input type="tel" name="celular" required inputmode="numeric" pattern="[0-9+\-\s]*"
-                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
-                        </label>
-
-                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                            Dirección de envío
-                            <input type="text" name="direccion" required
-                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
-                        </label>
-
-                        <label style="display: flex; flex-direction: column; font-size: 13px; color: #555;">
-                            Ciudad
-                            <input type="text" name="ciudad" required
-                                   style="margin-top: 4px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
-                        </label>
-
-                        
-
-                        <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #444;">
-                            <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required
-                                   style="margin-top: 3px;">
+                        <label class="reserva-chk-row">
+                            <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required>
                             <span>
                                 Acepto el <strong>tratamiento de datos</strong> conforme a la
                                 <a href="https://masterseries.com.co/politica-de-tratamiento-de-la-informacion"
                                    target="_blank" rel="noopener noreferrer"
                                    style="color: #2e7d32; text-decoration: underline;">
-                                   política de tratamiento de la información
+                                   política de tratamiento
                                 </a>.
                             </span>
                         </label>
 
-                        <p style="color: #c62828; font-size: 13px; margin: 4px 0;">
-                            ⚠️ Una vez confirmada, la reserva <strong>no podrá modificarse</strong> y el inventario será descontado.
+                        <p class="reserva-warning">
+                            ⚠️ Una vez confirmada, la reserva no podrá modificarse y el inventario será descontado.
                         </p>
 
-                        <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 6px;">
-                            <button type="button" id="btn-cancelar-reserva"
-                                    style="background: #eee; color: #444; padding: 10px 22px; border: none;
-                                           border-radius: 10px; cursor: pointer;">
+                        <div class="reserva-btns">
+                            <button type="button" id="btn-cancelar-reserva" class="reserva-btn-cancel">
                                 Cancelar
                             </button>
-                            <button type="submit" id="btn-confirmar-reserva"
-                                    style="background: #2e7d32; color: white; padding: 10px 22px; border: none;
-                                           border-radius: 10px; cursor: pointer; font-weight: bold;">
+                            <button type="submit" id="btn-confirmar-reserva" class="reserva-btn-confirm">
                                 Confirmar reserva
                             </button>
                         </div>
@@ -265,6 +246,9 @@
     }
 
     function recalcular() {
+        // Misma lógica que `calcular_carrito()` en cart.py:
+        //   precio_final = precio_ahora * (1 - promo/100)   (encadenado)
+        //   dcto_visible = (precio_antes - precio_final) / precio_antes * 100
         const items = Array.from(document.querySelectorAll('.Reserva-item'));
         const cantidad = items.length;
         const promo = descuentoPromocional(cantidad);
@@ -273,12 +257,18 @@
         let total = 0;
 
         items.forEach(div => {
-            const precioAntes = parseInt(div.dataset.precioAntes || '0', 10);
-            const dctoOriginal = parseInt(div.dataset.dctoOriginal || '0', 10);
-            const dctoAplicado = Math.max(dctoOriginal, promo);
-            const precioFinal = dctoAplicado > 0
-                ? Math.round(precioAntes * (100 - dctoAplicado) / 100)
-                : precioAntes;
+            let precioAntes = parseInt(div.dataset.precioAntes || '0', 10);
+            let precioAhora = parseInt(div.dataset.precioAhora || '0', 10);
+            if (precioAntes <= 0) precioAntes = precioAhora;
+            if (precioAhora <= 0) precioAhora = precioAntes;
+
+            const precioFinal = promo > 0
+                ? Math.round(precioAhora * (100 - promo) / 100)
+                : precioAhora;
+
+            const dctoVisible = precioAntes > 0
+                ? Math.round((precioAntes - precioFinal) * 100 / precioAntes)
+                : 0;
 
             subtotal += precioAntes;
             total += precioFinal;
@@ -287,8 +277,8 @@
             const precioFinalEl = div.querySelector('.precio-final');
             if (precioFinalEl) precioFinalEl.textContent = formatCurrency(precioFinal);
             if (badge) {
-                const esPromo = dctoAplicado === promo && promo > dctoOriginal;
-                badge.textContent = `-${dctoAplicado}% ${esPromo ? '(promo)' : ''}`.trim();
+                const esPromo = promo > 0;
+                badge.textContent = `-${dctoVisible}%${esPromo ? ' (promo)' : ''}`;
                 badge.style.background = esPromo ? '#8a8f64' : '#c62828';
             }
         });
@@ -377,10 +367,15 @@
     const chkTratamiento = document.getElementById('chk-tratamiento');
 
     function abrirModal() {
-        if (modalReserva) modalReserva.style.display = 'flex';
+        if (!modalReserva) return;
+        modalReserva.classList.add('active');
+        // Evita que el fondo se mueva mientras el modal está visible
+        document.body.style.overflow = 'hidden';
     }
     function cerrarModal() {
-        if (modalReserva) modalReserva.style.display = 'none';
+        if (!modalReserva) return;
+        modalReserva.classList.remove('active');
+        document.body.style.overflow = '';
     }
 
     if (btnReservar) {
