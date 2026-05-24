@@ -477,10 +477,38 @@ button:hover {
   transform: translateY(-5px);
 }
 
+.product-image-wrapper {
+  /* Fondo neutro para que el letterbox de imágenes con aspect ratio
+     distinto al del contenedor (típicamente verticales en una tarjeta
+     casi cuadrada) se vea intencional y no como "espacio vacío". */
+  background: #f3f3f3;
+  position: relative;
+  cursor: pointer;
+}
+
 .product-image {
   width: 100%;
   height: 250px;
-  object-fit: cover;
+  /* `contain` → muestra la imagen COMPLETA (no recorta nunca). Si el
+     aspect ratio no coincide con el contenedor, deja letterbox (que
+     queda con el fondo gris claro del wrapper). */
+  object-fit: contain;
+  display: block;
+}
+
+/* En pantallas móviles las tarjetas se hacen más anchas que altas
+   relativamente, así que damos un poco más de altura al área de imagen
+   para que las prendas verticales se vean bien proporcionadas. */
+@media (max-width: 640px) {
+  .product-image {
+    height: 320px;
+  }
+}
+
+@media (max-width: 380px) {
+  .product-image {
+    height: 280px;
+  }
 }
 
 /* FOOTER / DETAIL GRID */
