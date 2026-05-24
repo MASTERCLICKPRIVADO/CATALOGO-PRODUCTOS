@@ -15,6 +15,10 @@
         El % adicional se aplica sobre el precio actual de cada prenda
         (incluso si ya tiene descuento), acumulando el ahorro total.
     </p>
+    <p style="font-size: 12px; color: #888; margin-top: 6px;">
+        Algunos artículos pueden no aplicar al descuento por cantidad —
+        en ese caso se mantiene su precio actual.
+    </p>
 </div>
 {% endblock %}
 
@@ -55,7 +59,8 @@
                 <div class="Reserva-item cart-item-card" id="item-{{ item.id }}"
                      data-precio-antes="{{ item.precio_antes_int }}"
                      data-precio-ahora="{{ item.precio_ahora_int }}"
-                     data-dcto-original="{{ item.dcto_original_int }}">
+                     data-dcto-original="{{ item.dcto_original_int }}"
+                     data-aplica-promo="{{ '1' if item.aplica_promo else '0' }}">
 
                     <!-- Imagen -->
                     <div class="cart-item-img-wrap">
@@ -90,6 +95,12 @@
                             {% endif %}
                             <div class="precio-final">{{ item.precio_final | currency }}</div>
                         </div>
+
+                        {% if not item.aplica_promo %}
+                        <p class="cart-item-no-aplica">
+                            ⓘ Este artículo no acumula descuento por cantidad.
+                        </p>
+                        {% endif %}
 
                         <!-- Pie: fecha + botón -->
                         <div class="cart-item-footer">
@@ -259,11 +270,16 @@
         items.forEach(div => {
             let precioAntes = parseInt(div.dataset.precioAntes || '0', 10);
             let precioAhora = parseInt(div.dataset.precioAhora || '0', 10);
+            const aplicaPromo = div.dataset.aplicaPromo !== '0';
             if (precioAntes <= 0) precioAntes = precioAhora;
             if (precioAhora <= 0) precioAhora = precioAntes;
 
-            const precioFinal = promo > 0
-                ? Math.round(precioAhora * (100 - promo) / 100)
+            // Promo efectivo del ítem: si no aplica, queda en 0 (sigue
+            // contando para el tier global pero no recibe el descuento).
+            const promoItem = aplicaPromo ? promo : 0;
+
+            const precioFinal = promoItem > 0
+                ? Math.round(precioAhora * (100 - promoItem) / 100)
                 : precioAhora;
 
             const dctoVisible = precioAntes > 0
@@ -277,7 +293,7 @@
             const precioFinalEl = div.querySelector('.precio-final');
             if (precioFinalEl) precioFinalEl.textContent = formatCurrency(precioFinal);
             if (badge) {
-                const esPromo = promo > 0;
+                const esPromo = promoItem > 0;
                 badge.textContent = `-${dctoVisible}%${esPromo ? ' (promo)' : ''}`;
                 badge.style.background = esPromo ? '#8a8f64' : '#c62828';
             }

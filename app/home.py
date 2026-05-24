@@ -30,6 +30,10 @@ _DATA_COLUMN_MAP = {
     "talla_cm": "TallaCM",
     "talla_co": "TallaCO",
     "talla_u.s_co": "TallaUSCO",
+    # "si" / "no": indica si el artículo recibe el % de descuento
+    # acumulativo del carrito. "no" → sigue contando para el tier
+    # pero NO se le aplica el extra encima de su precio_ahora.
+    "aplica": "aplica",
 }
 
 
@@ -46,7 +50,8 @@ def load_data():
                     """SELECT tienda, inventario, ciudad, referencia, talla, nombre,
                               division, precio_antes, genero, edad, deporte,
                               tipo_producto, dcto, imagen, precio_ahora,
-                              categoria, subcategoria, talla_cm, talla_co, "talla_u.s_co"
+                              categoria, subcategoria, talla_cm, talla_co, "talla_u.s_co",
+                              aplica
                          FROM data"""
                 )
                 rows = cur.fetchall()

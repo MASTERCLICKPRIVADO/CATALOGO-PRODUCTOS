@@ -12,11 +12,25 @@
         <div style="text-align: left; margin-bottom: 30px; background: #f9f9f9; padding: 20px; border-radius: 16px;">
             <div style="margin-bottom: 15px;">
                 <label style="display: block; font-size: 12px; color: #888; text-transform: uppercase; font-weight: bold;">Usuario</label>
-                <span style="font-size: 18px; color: #333; font-weight: 600;">{{ request.session.user }}</span>
+                <span style="font-size: 18px; color: #333; font-weight: 600;">
+                    {{ perfil.usuario or request.session.user }}
+                </span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; color: #888; text-transform: uppercase; font-weight: bold;">Ciudad</label>
+                <span style="font-size: 18px; color: #333; font-weight: 600;">
+                    {{ perfil.ciudad or request.session.city or '—' }}
+                </span>
             </div>
             <div>
-                <label style="display: block; font-size: 12px; color: #888; text-transform: uppercase; font-weight: bold;">Ciudad</label>
-                <span style="font-size: 18px; color: #333; font-weight: 600;">{{ request.session.city }}</span>
+                <label style="display: block; font-size: 12px; color: #888; text-transform: uppercase; font-weight: bold;">Código de Referido</label>
+                <span style="font-size: 18px; color: #333; font-weight: 600;">
+                    {% if perfil.codigo_referido %}
+                        {{ perfil.codigo_referido }}
+                    {% else %}
+                        <span style="color: #aaa; font-weight: normal; font-style: italic;">Sin código asignado</span>
+                    {% endif %}
+                </span>
             </div>
         </div>
         

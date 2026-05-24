@@ -53,11 +53,11 @@ def init_storage():
 # ----------------------- USUARIOS -----------------------
 
 def obtener_usuario(usuario):
-    """Devuelve dict {usuario, contrasenia, ciudad} o None."""
+    """Devuelve dict {usuario, contrasenia, ciudad, codigo_referido} o None."""
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT usuario, contrasenia, ciudad FROM usuarios WHERE usuario = %s",
+                "SELECT usuario, contrasenia, ciudad, codigo_referido FROM usuarios WHERE usuario = %s",
                 (str(usuario),),
             )
             return cur.fetchone()
@@ -79,6 +79,28 @@ def obtener_referido(codigo):
                 (str(codigo),),
             )
             return cur.fetchone()
+
+
+def actualizar_referido_y_ciudad(usuario, codigo_referido, ciudad):
+    """
+    Sobreescribe `codigo_referido` y `ciudad` del usuario en la BD.
+    Se llama en cada login: el código ingresado en ese momento define
+    la ciudad cuyo inventario verá el usuario en esta sesión.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE usuarios
+                      SET codigo_referido = %s,
+                          ciudad = %s
+                    WHERE usuario = %s""",
+                (
+                    str(codigo_referido).strip(),
+                    str(ciudad).strip(),
+                    str(usuario),
+                ),
+            )
+        conn.commit()
 
 
 def crear_usuario(correo, contrasenia, ciudad, codigo_referido):
@@ -201,10 +223,11 @@ def obtener_carrito(usuario):
             cur.execute(
                 """SELECT c.id, c.usuario, c.referencia, c.talla, c.ciudad, c.nombre, c.precio,
                           c.precio_antes, c.dcto_original, c.imagen, c.cantidad, c.fecha_agregado,
-                          d.talla_cm, d.talla_co, "talla_u.s_co" as talla_usco
+                          d.talla_cm, d.talla_co, "talla_u.s_co" as talla_usco,
+                          d.aplica
                      FROM carrito c
-                     LEFT JOIN data d ON c.referencia = d.referencia 
-                                     AND c.talla = d.talla 
+                     LEFT JOIN data d ON c.referencia = d.referencia
+                                     AND c.talla = d.talla
                                      AND c.ciudad = d.ciudad
                     WHERE c.usuario = %s
                     ORDER BY c.fecha_agregado DESC, c.id DESC""",

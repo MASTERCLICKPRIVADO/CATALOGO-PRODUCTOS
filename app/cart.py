@@ -80,6 +80,13 @@ def calcular_carrito(items):
         precio_ahora = _to_int(it.get("precio"))
         dcto_original = _to_int(it.get("dcto_original"))
 
+        # Flag de la tabla `data` (columna `aplica`, "si" o "no"). Si vale
+        # "no", el artículo SIGUE contando para el tier de promo (2/3/4+
+        # unidades), pero NO recibe el % adicional sobre su precio_ahora.
+        # Default permisivo: cualquier cosa distinta de "no" → aplica.
+        aplica_str = str(it.get("aplica") or "").strip().lower()
+        no_aplica_promo = (aplica_str == "no")
+
         # Defensa / retro-compat para items que se guardaron antes del fix
         # del column-name en agregar_al_carrito (cuando precio_antes quedaba
         # vacío en la BD). Si tenemos el % de descuento original y el precio
@@ -93,15 +100,22 @@ def calcular_carrito(items):
         if precio_ahora <= 0:
             precio_ahora = precio_antes
 
+        # Promo EFECTIVO para este ítem: si no aplica, lo neutralizamos a 0.
+        # (El tier global sigue calculado sobre len(items), así que un ítem
+        # "no aplica" sí inflama el tier para los demás ítems.)
+        promo_item = 0 if no_aplica_promo else dcto_promo
+
         # El descuento promocional se aplica SOBRE precio_ahora
         # (encadenado, no sustituye al original).
-        if dcto_promo > 0:
-            precio_final = int(round(precio_ahora * (100 - dcto_promo) / 100))
+        if promo_item > 0:
+            precio_final = int(round(precio_ahora * (100 - promo_item) / 100))
         else:
             precio_final = precio_ahora
 
         # Descuento total visible = diferencia porcentual entre precio_final
-        # y precio_antes (original sin ningún descuento).
+        # y precio_antes (original sin ningún descuento). Para ítems que no
+        # aplican al promo, esto refleja solo el descuento original de la
+        # prenda (si lo tiene); para los que sí aplican, refleja la suma.
         if precio_antes > 0:
             dcto_total_visible = int(round(
                 (precio_antes - precio_final) * 100 / precio_antes
@@ -121,9 +135,11 @@ def calcular_carrito(items):
             # `dcto_aplicado` ahora representa el descuento TOTAL acumulado
             # respecto al precio_antes (lo que el cliente debe ver).
             "dcto_aplicado": dcto_total_visible,
-            # True cuando hay descuento promocional activo (encadenado encima
-            # del original). Sirve para colorear el badge distinto.
-            "dcto_es_promocional": dcto_promo > 0,
+            # True solo cuando el promo está activo Y se aplicó a este ítem.
+            "dcto_es_promocional": (dcto_promo > 0) and (not no_aplica_promo),
+            # Para que el template y el JS sepan si este ítem está excluido
+            # del descuento acumulativo (UX claro al cliente).
+            "aplica_promo": (not no_aplica_promo),
             "precio_final": precio_final,
             "ahorro_item": ahorro_item,
         })

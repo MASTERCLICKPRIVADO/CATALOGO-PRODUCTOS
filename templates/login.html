@@ -13,17 +13,33 @@
         </div>
         {% endif %}
         
-        <form action="/login" method="post">
-            <div style="margin-bottom: 20px;">
+        <form action="/login" method="post" autocomplete="off">
+            <div style="margin-bottom: 16px;">
                 <label for="username" style="display: block; margin-bottom: 8px; font-weight: 600;">Usuario</label>
-                <input type="text" id="username" name="username" class="search-input" placeholder="tu@email.com" required>
+                <input type="text" id="username" name="username" class="search-input"
+                       placeholder="tu@email.com" required
+                       value="{{ form.username or '' }}">
             </div>
-            
-            <div style="margin-bottom: 30px;">
+
+            <div style="margin-bottom: 16px;">
                 <label for="password" style="display: block; margin-bottom: 8px; font-weight: 600;">Contraseña</label>
-                <input type="password" id="password" name="password" class="search-input" placeholder="••••••••" required>
+                <input type="password" id="password" name="password" class="search-input"
+                       placeholder="••••••••" required>
             </div>
-            
+
+            <div style="margin-bottom: 24px;">
+                <label for="codigo_referido" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                    Código de referido
+                </label>
+                <input type="text" id="codigo_referido" name="codigo_referido" class="search-input"
+                       placeholder="Ej. ABC123" required
+                       value="{{ form.codigo_referido or '' }}"
+                       style="text-transform: uppercase;">
+                <p style="margin: 6px 2px 0; color: #888; font-size: 11px;">
+                    Determina la ciudad del catálogo en esta sesión.
+                </p>
+            </div>
+
             <button type="submit">Entrar</button>
         </form>
 
