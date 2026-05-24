@@ -51,54 +51,54 @@
         {% if items %}
             <div id="Reserva-items" style="display: flex; flex-direction: column; gap: 15px;">
                 {% for item in items %}
-                <div class="Reserva-item" id="item-{{ item.id }}"
+                <div class="Reserva-item cart-item-card" id="item-{{ item.id }}"
                      data-precio-antes="{{ item.precio_antes_int }}"
-                     data-dcto-original="{{ item.dcto_original_int }}"
-                     style="display: grid; grid-template-columns: 100px 1fr auto; gap: 20px; align-items: center;
-                            padding: 15px; border: 1px solid #eee; border-radius: 16px; background: #fafafa;">
-                    <img src="{{ item.imagen }}" alt="{{ item.nombre }}"
-                         onerror="this.src='/static/img/ESCUDO.jpeg'"
-                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 12px;">
+                     data-dcto-original="{{ item.dcto_original_int }}">
 
-                    <div>
-                        <h3 style="color: #333; margin-bottom: 5px;">{{ item.nombre }}</h3>
-                        <p style="color: #999; font-size: 13px; margin: 0;">REF: {{ item.referencia }}</p>
-                        <p style="color: #555; font-size: 14px; margin: 5px 0;">
-                            Talla: <strong>CM: {{ item.talla_cm }} | U.S/CO: {{ item.talla_usco }}</strong> · Ciudad: {{ item.ciudad }}
-                        </p>
-
-                        <div style="margin: 8px 0;">
-                            {% if item.dcto_aplicado > 0 %}
-                                <span style="text-decoration: line-through; color: #999; font-size: 14px;">
-                                    {{ item.precio_antes_int | currency }}
-                                </span>
-                                <span style="background: {% if item.dcto_es_promocional %}#8a8f64{% else %}#c62828{% endif %};
-                                             color: white; padding: 3px 10px; border-radius: 999px;
-                                             font-weight: bold; font-size: 12px; margin-left: 6px;"
-                                      class="dcto-badge">
-                                    -{{ item.dcto_aplicado }}%
-                                    {% if item.dcto_es_promocional %}(promo){% endif %}
-                                </span>
-                                <div style="color: #8a8f64; font-weight: bold; font-size: 20px; margin-top: 3px;"
-                                     class="precio-final">
-                                    {{ item.precio_final | currency }}
-                                </div>
-                            {% else %}
-                                <div style="color: #8a8f64; font-weight: bold; font-size: 20px;"
-                                     class="precio-final">
-                                    {{ item.precio_final | currency }}
-                                </div>
-                            {% endif %}
-                        </div>
-
-                        <p style="color: #aaa; font-size: 11px; margin: 0;">Agregado: {{ item.fecha_agregado }}</p>
+                    <!-- Imagen -->
+                    <div class="cart-item-img-wrap">
+                        <img src="{{ item.imagen }}" alt="{{ item.nombre }}"
+                             onerror="this.src='/static/img/ESCUDO.jpeg'">
                     </div>
 
-                    <button class="btn-eliminar" data-item-id="{{ item.id }}"
-                            style="background: #c62828; color: white; padding: 10px 20px; border: none;
-                                   border-radius: 12px; cursor: pointer; font-weight: bold;">
-                        Eliminar
-                    </button>
+                    <!-- Información -->
+                    <div class="cart-item-body">
+                        <div>
+                            <p style="color: #777; font-size: 12px; margin: 0 0 2px 0;">{{ item.ciudad }}</p>
+                            <h3>{{ item.nombre }}</h3>
+                            <p style="color: #999; font-size: 12px; margin: 0;">REF: {{ item.referencia }}</p>
+                        </div>
+
+                        <div style="background: rgba(138,143,100,0.08); padding: 8px 12px; border-radius: 10px;">
+                            <p style="font-size: 13px; color: #444; margin: 0;">
+                                Talla: <strong>CM: {{ item.talla_cm }} | U.S/CO: {{ item.talla_usco }}</strong>
+                            </p>
+                        </div>
+
+                        <!-- Precio -->
+                        <div class="cart-item-precio">
+                            {% if item.dcto_aplicado > 0 %}
+                                <span class="precio-antes">{{ item.precio_antes_int | currency }}</span>
+                                <span class="dcto-badge"
+                                      style="background: {% if item.dcto_es_promocional %}#8a8f64{% else %}#c62828{% endif %};
+                                             color: white; padding: 3px 10px; border-radius: 999px;
+                                             font-weight: bold; font-size: 12px;">
+                                    -{{ item.dcto_aplicado }}%{% if item.dcto_es_promocional %} (promo){% endif %}
+                                </span>
+                            {% endif %}
+                            <div class="precio-final">{{ item.precio_final | currency }}</div>
+                        </div>
+
+                        <!-- Pie: fecha + botón -->
+                        <div class="cart-item-footer">
+                            <p style="color: #aaa; font-size: 11px; margin: 0;">Agregado: {{ item.fecha_agregado }}</p>
+                            <button class="btn-eliminar" data-item-id="{{ item.id }}"
+                                    style="background: #c62828; color: white; padding: 8px 20px; border: none;
+                                           border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
