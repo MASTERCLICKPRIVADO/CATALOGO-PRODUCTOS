@@ -73,7 +73,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="contenedor" style="padding-top: 50px;">
+<section class="contenedor" style="flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 8px 15px;">
     <div class="product-detail-grid">
         
         <!-- Imagen del Producto -->
@@ -82,16 +82,16 @@
         </div>
 
         <!-- Detalles del Producto -->
-        <div style="padding: 40px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="padding: 20px 32px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; height: 100%">
             <div>
                 <p style="color: #777; font-size: 14px; margin-bottom: 5px;">{{ producto.División }} | {{ producto.Genero }}</p>
-                <h1 style="color: #8a8f64; font-size: 36px; line-height: 1.2;">{{ producto.nombre }}</h1>
+                <h1 style="color: #8a8f64; font-size: 26px; line-height: 1.2;">{{ producto.nombre }}</h1>
                 <p style="color: #999;">REF: {{ producto.Referencia }}</p>
             </div>
 
-            <div style="background: rgba(138,143,100,0.1); padding: 20px; border-radius: 18px;">
-                <p style="font-size: 18px; color: #444; margin-bottom: 10px;">Deporte: <strong>{{ producto.Deporte }}</strong></p>
-                <p style="font-size: 18px; color: #444;">Edad: <strong>{{ producto.Edad }}</strong></p>
+            <div style="background: rgba(138,143,100,0.1); padding: 10px 16px; border-radius: 14px;">
+                <p style="font-size: 15px; color: #444; margin-bottom: 6px;">Deporte: <strong>{{ producto.Deporte }}</strong></p>
+                <p style="font-size: 15px; color: #444;">Edad: <strong>{{ producto.Edad }}</strong></p>
             </div>
 
             <!-- Tallas Disponibles -->
@@ -124,20 +124,20 @@
             </div>
 
             <!-- Precios -->
-            <div style="border-top: 1px solid #eee; padding-top: 20px; margin-top: auto;">
+            <div style="border-top: 1px solid #eee; padding-top: 10px; margin-top: auto;">
                 {% if producto['%DCTO'] and producto['%DCTO'] != '0' and producto['%DCTO'] != '0%' %}
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 5px;">
                     <span style="text-decoration: line-through; color: #999; font-size: 20px;">Antes: {{ producto['precio_antes'] | currency }}</span>
                     <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold;">Dcto: {{ producto['%DCTO'] }}</span>
                 </div>
                 {% endif %}
-                <div style="font-size: 48px; font-weight: bold; color: #8a8f64;">
+                <div style="font-size: 34px; font-weight: bold; color: #8a8f64;">
                     Ahora: {{ producto['Precio Ahora'] | currency }}
                 </div>
             </div>
 
             <!-- Selector de cantidad -->
-            <div id="cantidad-container" style="display: flex; align-items: center; gap: 14px; margin-top: 18px;">
+            <div id="cantidad-container" style="display: flex; align-items: center; gap: 14px; margin-top: 6px;">
                 <span style="font-weight: bold; color: #555;">Cantidad:</span>
                 <div style="display: inline-flex; align-items: center; border: 2px solid #8a8f64; border-radius: 14px; overflow: hidden;">
                     <button type="button" id="btn-cantidad-menos"
@@ -154,10 +154,10 @@
 
             <button id="btn-agregar-carrito" type="button"
                     data-referencia="{{ producto.Referencia }}"
-                    style="margin-top: 20px; background: #8a8f64; color: white;">
+                    style="margin-top: 6px; background: #8a8f64; color: white;">
                 🛒 Agregar al Carrito
             </button>
-            <button onclick="window.history.back()" style="margin-top: 10px;">Regresar al Catálogo</button>
+            <button onclick="window.history.back()" style="margin-top: 4px;">Regresar al Catálogo</button>
             <p id="carrito-feedback" style="margin-top: 5px; font-size: 14px; min-height: 20px; text-align: center;"></p>
         </div>
     </div>

@@ -43,7 +43,7 @@ main {
 }
 @font-face {
     font-family: 'BoldItalic';
-    src: url('../static/fonts/BoldItalic.ttf') format('truetype');
+    src: url('../static/fonts/adineuePROTT-Bold.ttf') format('truetype');
 }
 
 /* GLOBAL */
@@ -425,6 +425,8 @@ button:hover {
 .product-detail-grid {
   width: 100%;
   max-width: 1200px;
+  flex: 1;
+  min-height: 0;
   margin: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
