@@ -1,3 +1,6 @@
+import os
+import time
+
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -6,6 +9,27 @@ import pandas as pd
 from app import db
 
 router = APIRouter()
+
+
+def get_promo_image_url() -> str:
+    """
+    Construye la URL pública del banner de promoción almacenado en Supabase
+    Storage. Estructura: <SUPABASE_URL>/storage/v1/object/public/<bucket>/<file>.
+
+    Se agrega un cache-buster `?t=<timestamp>` para que, al actualizar la
+    imagen en Supabase, el navegador la traiga al instante sin tener que
+    hacer hard-refresh. (La imagen de promoción es ligera, no nos preocupa
+    el extra de no cachearla.)
+
+    Si faltara SUPABASE_URL (entorno mal configurado), caemos a la imagen
+    local en /static como fallback para no romper la home.
+    """
+    base = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+    bucket = (os.getenv("SUPABASE_STORAGE_BUCKET") or "static").strip("/")
+    file_name = (os.getenv("SUPABASE_PROMO_FILE") or "promocion.jpeg").lstrip("/")
+    if not base:
+        return f"/static/img/{file_name}"
+    return f"{base}/storage/v1/object/public/{bucket}/{file_name}?t={int(time.time())}"
 
 # Mapeo de columnas snake_case de Postgres -> nombres "legacy" del CSV
 # que el resto de la app (templates, filtros) ya conoce.
@@ -94,6 +118,35 @@ def filtrar_por_ciudad(df, ciudad):
     return df[df['Ciudad'].astype(str) == str(ciudad)]
 
 
+def aplicar_orden_dcto(df, orden):
+    """
+    Ordena el DataFrame por el % de descuento (`%DCTO`) cuando el usuario
+    selecciona el filtro de orden. Valores aceptados:
+      - "asc"  → de menor a mayor descuento
+      - "desc" → de mayor a menor descuento
+      - cualquier otro → no se altera el orden
+
+    `%DCTO` puede venir como "20%", "20", "0.20", "" → normalizamos a número.
+    Usamos `kind="mergesort"` (estable) para preservar el orden relativo
+    entre productos con el mismo descuento.
+    """
+    if df is None or df.empty or orden not in ("asc", "desc"):
+        return df
+    if "%DCTO" not in df.columns:
+        return df
+    df = df.copy()
+    df["_dcto_num"] = pd.to_numeric(
+        df["%DCTO"].astype(str)
+                   .str.replace("%", "", regex=False)
+                   .str.replace(",", ".", regex=False)
+                   .str.strip(),
+        errors="coerce",
+    ).fillna(0)
+    df = df.sort_values("_dcto_num", ascending=(orden == "asc"), kind="mergesort")
+    df = df.drop(columns=["_dcto_num"])
+    return df
+
+
 def get_filtros_completos(df, q=None, tipo_producto=None, categoria=None,
                           genero=None, deporte=None, edad=None, talla=None):
     def filtrar(df_in, skip=None):
@@ -136,7 +189,7 @@ def get_filtros_completos(df, q=None, tipo_producto=None, categoria=None,
 
 
 @router.get("/", response_class=HTMLResponse)
-async def ver_catalogo(request: Request, page: int = 1):
+async def ver_catalogo(request: Request, page: int = 1, orden_dcto: str = ""):
     templates = request.app.state.templates
     df = request.app.state.df  # ✅ Desde memoria, no desde disco
 
@@ -148,6 +201,10 @@ async def ver_catalogo(request: Request, page: int = 1):
     df = filtrar_por_ciudad(df, ciudad_usuario)
 
     df_unique = df.drop_duplicates(subset=['Referencia'])
+
+    # Ordenar por % de descuento si el usuario lo solicitó.
+    # Lo hacemos sobre el df ya deduplicado para no inflar las comparaciones.
+    df_unique = aplicar_orden_dcto(df_unique, orden_dcto)
 
     limit = 12
     start = (page - 1) * limit
@@ -164,6 +221,8 @@ async def ver_catalogo(request: Request, page: int = 1):
         "page": page,
         "has_more": has_more,
         "show_promo_on_load": show_promo_on_load,
+        "sel_orden_dcto": orden_dcto,
+        "promo_image_url": get_promo_image_url(),
     })
 
 
@@ -177,7 +236,8 @@ async def api_productos(
     genero: str = "",
     deporte: str = "",
     edad: str = "",
-    talla: str = ""
+    talla: str = "",
+    orden_dcto: str = "",
 ):
     df = request.app.state.df  # ✅ Desde memoria
 
@@ -204,6 +264,7 @@ async def api_productos(
         df = df[df['TallaUSCO'] == talla]
 
     df_unique = df.drop_duplicates(subset=['Referencia'])
+    df_unique = aplicar_orden_dcto(df_unique, orden_dcto)
 
     limit = 12
     start = (page - 1) * limit
@@ -227,6 +288,7 @@ async def buscar_productos(
     deporte: str = "",
     edad: str = "",
     talla: str = "",
+    orden_dcto: str = "",
     page: int = 1
 ):
     templates = request.app.state.templates
@@ -267,6 +329,7 @@ async def buscar_productos(
         df = df[df['TallaUSCO'] == talla]
 
     df_unique = df.drop_duplicates(subset=['Referencia'])
+    df_unique = aplicar_orden_dcto(df_unique, orden_dcto)
 
     limit = 12
     start = (page - 1) * limit
@@ -286,9 +349,11 @@ async def buscar_productos(
         "sel_dep": deporte,
         "sel_edad": edad,
         "sel_talla": talla,
+        "sel_orden_dcto": orden_dcto,
         "page": page,
         "has_more": has_more,
-        "mensaje": mensaje
+        "mensaje": mensaje,
+        "promo_image_url": get_promo_image_url(),
     })
 
 
