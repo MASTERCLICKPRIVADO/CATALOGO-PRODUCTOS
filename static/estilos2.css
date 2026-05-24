@@ -601,6 +601,51 @@ button:hover {
     }
 }
 
+/* SELECTOR DE CANTIDAD en info.html — fixes para móvil */
+
+/* El estilo global `button { width: 100% }` rompía los botones inline +/-.
+   Aquí los forzamos a ancho automático y a NO crecer dentro del flex. */
+#btn-cantidad-menos,
+#btn-cantidad-mas {
+    width: auto !important;
+    flex: 0 0 auto;
+}
+
+/* Si el contenido del row no cabe, que el hint pase a otra línea
+   en vez de empujar al botón "+" fuera del viewport. */
+#cantidad-container {
+    flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+    /* En el detalle de producto el panel derecho tiene padding 20px 32px;
+       en móvil reducimos los laterales para ganar ~32px de ancho útil. */
+    .product-detail-grid > div + div {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    /* Compactar el selector +/- para que quepa cómodo en pantallas estrechas */
+    #cantidad-container {
+        gap: 10px;
+    }
+    #btn-cantidad-menos,
+    #btn-cantidad-mas {
+        padding: 6px 14px !important;
+        font-size: 20px !important;
+    }
+    #cantidad-valor {
+        padding: 6px 14px !important;
+        min-width: 32px !important;
+        font-size: 16px !important;
+    }
+    /* El hint a otra línea: deja respirar al +/- y evita que se solape */
+    #cantidad-hint {
+        flex-basis: 100%;
+        margin-top: -2px;
+    }
+}
+
 /* MODAL DE RESERVA — compacto y sin scroll en ningún tamaño */
 .reserva-modal-overlay {
     position: fixed;
