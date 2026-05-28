@@ -25,7 +25,10 @@
 {% block content %}
 <section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
     <div style="max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
-        <h1 style="color: #8a8f64; margin-bottom: 5px;">🛒 Mi Orden</h1>
+        <div style="display: flex; align-items: baseline; gap: 15px;">
+            <h1 style="color: #8a8f64; margin-bottom: 5px;">🛒 Mi Orden</h1>
+            <p style="color: #999; margin: 0; font-size: 0.85rem;">Este catálogo de Master Series es solo de consulta y referencia. No es una página de comercio electrónico.</p>
+        </div>
         <p style="color: #777; margin-bottom: 10px;">
             {{ cantidad }} artículo{{ 's' if cantidad != 1 else '' }} en tu Orden.
         </p>
@@ -218,6 +221,25 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Modal de confirmación final (Diseño idéntico al anterior) -->
+            <div id="modal-confirmacion-final" class="reserva-modal-overlay">
+                <div class="reserva-modal-card" style="max-width: 420px; text-align: center;">
+                    <h2 style="color: #c62828;">¿Confirmar Orden?</h2>
+                    <p class="reserva-subtitle" style="margin: 15px 0 20px 0; font-size: 15px;">
+                        ¿Está seguro de realizar su reserva? <br>
+                        <strong>Una vez reserve no podrá agregar nada más a su Orden.</strong>
+                    </p>
+                    <div class="reserva-btns" style="justify-content: center; gap: 15px;">
+                        <button type="button" id="btn-cancelar-final" class="reserva-btn-cancel" style="flex: 1;">
+                            No, volver
+                        </button>
+                        <button type="button" id="btn-confirmar-final" class="reserva-btn-confirm" style="flex: 1; background: #2e7d32;">
+                            Sí, reservar
+                        </button>
+                    </div>
+                </div>
+            </div>
         {% else %}
             <div id="Reserva-vacio" style="text-align: center; padding: 50px;">
                 <div style="font-size: 70px; margin-bottom: 20px;">🛒</div>
@@ -382,6 +404,11 @@
     const formReserva = document.getElementById('form-reserva');
     const chkTratamiento = document.getElementById('chk-tratamiento');
 
+    // Elementos del modal de confirmación personalizada
+    const modalFinal = document.getElementById('modal-confirmacion-final');
+    const btnConfirmarFinal = document.getElementById('btn-confirmar-final');
+    const btnCancelarFinal = document.getElementById('btn-cancelar-final');
+
     function abrirModal() {
         if (!modalReserva) return;
         modalReserva.classList.add('active');
@@ -392,6 +419,31 @@
         if (!modalReserva) return;
         modalReserva.classList.remove('active');
         document.body.style.overflow = '';
+    }
+
+    // Helper para pedir confirmación con el modal personalizado
+    function pedirConfirmacionFinal() {
+        return new Promise((resolve) => {
+            if (!modalFinal) return resolve(false);
+
+            const handleConfirm = () => {
+                cleanup();
+                resolve(true);
+            };
+            const handleCancel = () => {
+                cleanup();
+                resolve(false);
+            };
+            const cleanup = () => {
+                modalFinal.classList.remove('active');
+                btnConfirmarFinal.removeEventListener('click', handleConfirm);
+                btnCancelarFinal.removeEventListener('click', handleCancel);
+            };
+
+            btnConfirmarFinal.addEventListener('click', handleConfirm);
+            btnCancelarFinal.addEventListener('click', handleCancel);
+            modalFinal.classList.add('active');
+        });
     }
 
     if (btnReservar) {
@@ -409,6 +461,10 @@
     if (formReserva) {
         formReserva.addEventListener('submit', async (ev) => {
             ev.preventDefault();
+
+            // REEMPLAZO: Se usa el modal personalizado en lugar de confirm() nativo
+            const confirmado = await pedirConfirmacionFinal();
+            if (!confirmado) return;
 
             if (chkTratamiento && !chkTratamiento.checked) {
                 mostrarMsg('Debes aceptar el tratamiento de datos para reservar.', false);

@@ -35,9 +35,17 @@
                        placeholder="Ej. ABC123" required
                        value="{{ form.codigo_referido or '' }}"
                        style="text-transform: uppercase;">
-                <p style="margin: 6px 2px 0; color: #888; font-size: 11px;">
-                    Determina la ciudad del catálogo en esta sesión.
-                </p>
+                <label class="reserva-chk-row">
+                            <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required>
+                            <span>
+                                Acepto el <strong>tratamiento de datos</strong> conforme a la
+                                <a href="https://masterseries.com.co/politica-de-tratamiento-de-la-informacion"
+                                   target="_blank" rel="noopener noreferrer"
+                                   style="color: #2e7d32; text-decoration: underline;">
+                                   política de tratamiento
+                                </a>.
+                            </span>
+                        </label>
             </div>
 
             <button type="submit">Entrar</button>

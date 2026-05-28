@@ -201,12 +201,17 @@
             <div style="border-top: 1px solid #eee; padding-top: 10px; margin-top: auto;">
                 {% if producto['%DCTO'] and producto['%DCTO'] != '0' and producto['%DCTO'] != '0%' %}
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 5px;">
-                    <span style="text-decoration: line-through; color: #999; font-size: 20px;">Antes: {{ producto['precio_antes'] | currency }}</span>
+                    <span style="text-decoration: line-through; color: #999; font-size: 20px;">Precio original: {{ producto['precio_antes'] | currency }}</span>
                     <span style="background: #8a8f64; color: white; padding: 5px 12px; border-radius: 999px; font-weight: bold;">Dcto: {{ producto['%DCTO'] }}</span>
                 </div>
                 {% endif %}
                 <div style="font-size: 34px; font-weight: bold; color: #8a8f64;">
-                    Ahora: {{ producto['Precio Ahora'] | currency }}
+                    {% if producto['%DCTO'] and producto['%DCTO'] != '0' and producto['%DCTO'] != '0%' %}
+                    Ahora:
+                    {% else %}
+                    Precio:
+                    {% endif %}
+                    {{ producto['Precio Ahora'] | currency }}
                 </div>
             </div>
 
@@ -338,7 +343,7 @@
                 carritoFeedback.style.color = '#c62828';
             } finally {
                 btnAgregar.disabled = false;
-                btnAgregar.textContent = '🛒 Agregar al Carrito';
+                btnAgregar.textContent = '🛒 Agregar a la orden';
             }
         });
     })();
