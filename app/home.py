@@ -200,6 +200,10 @@ async def ver_catalogo(request: Request, page: int = 1, orden_dcto: str = ""):
     ciudad_usuario = request.session.get("city", "")
     df = filtrar_por_ciudad(df, ciudad_usuario)
 
+    # Solo mostrar productos con stock disponible
+    if df is not None and not df.empty and 'Inventario' in df.columns:
+        df = df[df['Inventario'] > 0]
+
     df_unique = df.drop_duplicates(subset=['Referencia'])
 
     # Ordenar por % de descuento si el usuario lo solicitó.
@@ -244,6 +248,10 @@ async def api_productos(
     # Filtrar por ciudad del usuario logueado
     ciudad_usuario = request.session.get("city", "")
     df = filtrar_por_ciudad(df, ciudad_usuario)
+
+    # Solo mostrar productos con stock disponible
+    if df is not None and not df.empty and 'Inventario' in df.columns:
+        df = df[df['Inventario'] > 0]
 
     if q:
         df = df[
@@ -297,6 +305,10 @@ async def buscar_productos(
     # Filtrar por ciudad del usuario logueado
     ciudad_usuario = request.session.get("city", "")
     df_all = filtrar_por_ciudad(df_all, ciudad_usuario)
+
+    # Solo mostrar productos con stock disponible
+    if df_all is not None and not df_all.empty and 'Inventario' in df_all.columns:
+        df_all = df_all[df_all['Inventario'] > 0]
 
     df = df_all.copy()
     mensaje = None
@@ -372,6 +384,10 @@ async def detalle_producto(request: Request, referencia: str):
     ciudad_usuario = request.session.get("city", "")
     df = filtrar_por_ciudad(df, ciudad_usuario)
 
+    # Solo mostrar variantes con stock disponible
+    if df is not None and not df.empty and 'Inventario' in df.columns:
+        df = df[df['Inventario'] > 0]
+
     variantes = df[df['Referencia'].astype(str) == str(referencia)]
     if variantes.empty:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -404,6 +420,10 @@ async def api_sugerencias(request: Request, q: str = ""):  # ✅ Request agregad
     # Filtrar por ciudad del usuario logueado
     ciudad_usuario = request.session.get("city", "")
     df = filtrar_por_ciudad(df, ciudad_usuario)
+
+    # Solo mostrar productos con stock disponible
+    if df is not None and not df.empty and 'Inventario' in df.columns:
+        df = df[df['Inventario'] > 0]
 
     nombres = df[df['nombre'].str.contains(q, case=False)]['nombre'].unique().tolist()
     referencias = df[df['Referencia'].astype(str).str.contains(q, case=False)]['Referencia'].unique().tolist()
