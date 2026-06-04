@@ -399,3 +399,34 @@ def guardar_reserva(usuario, datos_cliente: dict, items: list,
                 )
         conn.commit()
     return reserva_id
+
+
+# ----------------------- PROMOCIONES Y EXCLUSIONES -----------------------
+
+def obtener_promocion_activa():
+    """Devuelve la última promoción registrada en la tabla `promociones`."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id_promocion, descripcion FROM promociones ORDER BY id_promocion DESC LIMIT 1"
+            )
+            return cur.fetchone()
+
+
+def obtener_referencias_excluidas(id_promocion=None):
+    """
+    Devuelve las referencias excluidas de la tabla `excluidos`.
+    Si se pasa un id_promocion, filtra solo las de esa promoción.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if id_promocion:
+                cur.execute(
+                    "SELECT article_id, campaign_name FROM excluidos WHERE id_promocion = %s",
+                    (id_promocion,)
+                )
+            else:
+                cur.execute(
+                    "SELECT article_id, campaign_name FROM excluidos"
+                )
+            return cur.fetchall()

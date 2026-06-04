@@ -8,21 +8,13 @@
         <h1 style="text-align: center; margin-bottom: 30px; color: #8a8f64;">Términos y Condiciones</h1>
         
         <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eee;">
-            <p><strong>Oferta válida del 28 AL 30 DE MAYO de 2026.</strong></p>
-            
-            <ul style="list-style-type: disc; padding-left: 20px; margin: 20px 0;">
-                <li>Recibe 20% de descuento por compra de 2 unidades.</li>
-                <li>Recibe 30% de descuento por compra de 3 unidades.</li>
-                <li>Recibe 40% de descuento por compra de 4 unidades.</li>
-            </ul>
-
-            <p>Válido para tiendas franquicias adidas Master Series. No válido para tiendas propias adidas, adidas originals, factory outlets, adidas app y página web.</p>
-            
-            <p>Máximo 3 unidades de la misma referencia por factura. No reembolsable en dinero. No aplica en productos seleccionados. Consultar exclusiones en punto de pago.</p>
-            
-            <p>Los descuentos ofrecidos en la promoción son acumulables con productos en descuento. La oferta no es acumulable con otras promociones.</p>
-            
-            <p>Imagenes de referencia. El coste del envio es asumido por el comprador.</p>
+            {% if promocion %}
+                <p style="font-size: 1.1em; color: #888; font-weight: bold; margin-bottom: 20px;">
+                    {{ promocion.descripcion }}
+                </p>
+            {% else %}
+                <p style="text-align: center; color: #888; font-style: italic;">No existen promociones activas en este momento.</p>
+            {% endif %}
 
             <h3 style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; color: #8a8f64;">Referencias Excluidas</h3>
             <div style="max-height: 400px; overflow-y: auto; border: 1px solid #eee; border-radius: 5px; margin-top: 15px;">
@@ -34,121 +26,16 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6971</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H JSY AU IMPYEL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6972</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H JSY IMPYEL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6973</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A JSY AU</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6974</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6984</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A SHO</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL8580</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FMF H JSY D</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL8662</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H SHO GLOBLU</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JM1092</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FMF TT 86</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JM8395</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA A JSY D</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JM8396</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA H JSY D</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN1872</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JFA A JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN2074</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB A JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN3708</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA H JSY 06 M</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN3709</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA A JSY 06 M</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN3713</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A JSY 90</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN4390</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">RFEF H JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JN4397</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">RFEF A JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY5076</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FVF A JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY5210</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">OG TT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY5211</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">OG TP</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY9599</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FIGC A OG JK</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY9624</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FIGC OG TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ2214</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA A TT 06</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ2249</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FEF A OG JK</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ2254</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FEF OG TT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ2256</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FEF OG TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6218</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF AW JKT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6221</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF HOODIE TENABL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6223</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF PRE JKT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6224</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF POLO TENABL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6226</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TR JSY WHITE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6228</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TR SHO TENABL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6229</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TEE TENABL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6232</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TR SL JSY WHITE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6234</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TR PNT TENABL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6235</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TR TOP WHITE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6239</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF PRESHI A</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6287</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA A OG JK</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6305</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA OG TT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6307</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA OG TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8789</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H JSY AUL IMPYEL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8921</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">COL OLP TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9056</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A OG JKT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9059</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DNA TT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9060</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DNA HD</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9079</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DNA POLO</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9088</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF OG TT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9091</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF OG SHO</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9092</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9336</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB A OG JK</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9340</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB OG TT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ9342</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB OG TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KA1532</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF OG TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KA5122</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">TIRO26C PNT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KA8117</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA H 10 D WHITE/ICEBLU/LTBLUE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KB3723</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FVF H JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KB6216</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">MASCOT TEE STR</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KB6217</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">MASCOT TEE CIAO</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KC3833</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">MASCOT TEE FOT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD1149</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JFF A JSY M10</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8363</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB H JSY WHITE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KE2037</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">MASCOT TEE PIQ</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KE2038</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">MASCOT TEE ALL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KF0323</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA OG TEE AOP</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KH3823</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TT TEE BROYAL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KH3824</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TT FZ WB BROYAL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KH3827</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TT PNT BROYAL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KH3828</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DNA TEE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KH3829</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DNA PNT</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KT0344</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF OG TP</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY5075</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FVF H JSY Y TECOBU</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY5083</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FVF A JSY Y</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ4560</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB H JSY Y WHITE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ4569</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">DFB A JSY Y</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6231</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF TR JSYY WHITE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6237</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF PRE JKT Y TENABL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8793</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A JSY Y</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8797</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H JSY Y IMPYEL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8800</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H SHO Y GLOBLU</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8879</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">COL OLP TEE Y</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KA8113</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA H SHO Y D</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KA8115</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA H 10 Y D</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KC1336</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">MASCOT SWT Y</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KH3942</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA A JSY 10 YD</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ6241</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF PRESHI A Y</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8790</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H MINI IMPYEL/GLOBLU</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8803</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A MINI</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JY5077</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FVF H JSY W TECOBU</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8788</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H JSY W IMPYEL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JZ8843</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A JSY W</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KA8125</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">AFA H JSY W D</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KE8087</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H JSY CRO W IMPYEL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KE8088</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A JSY CRO W</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KE2294</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">COLOMBIA BB JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KE2299</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">COLOMBIA BB JSY</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">HQ9438</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">HANDBALL SPEZIAL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">IH9648</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">GAZELLE INDOOR</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JR7875</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">PREDATOR LEAGUE FT TF</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JS0379</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">PREDATOR ELITE FT FG</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JS0426</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">PREDATOR LEAGUE FT FG</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">HQ9469</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">BARREDA DECODE J FOOTBALL</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JD8021</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">WC PRO</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JD8028</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">WC CLB</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JD8030</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">WC LGE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JD8032</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">WC TRN</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JD8034</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">WC MINI</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JD8045</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">WC LGE BOX</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6990</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF H SO SELURE</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">JL6993</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF A SO</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8511</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF WAISTBAG</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8512</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DAD CAP</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8513</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF BUCKET</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8515</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF BB CAP</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8516</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF BB CAP</td></tr>
-                        <tr><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">KD8519</td><td style="padding: 8px 10px; border-bottom: 1px solid #eee;">FCF DAD CAP</td></tr>
+                        {% if excluidos %}
+                            {% for ex in excluidos %}
+                                <tr>
+                                    <td style="padding: 8px 10px; border-bottom: 1px solid #eee;">{{ ex.article_id }}</td>
+                                    <td style="padding: 8px 10px; border-bottom: 1px solid #eee;">{{ ex.campaign_name }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="2" style="padding: 20px; text-align: center; color: #888;">No hay referencias excluidas registradas.</td></tr>
+                        {% endif %}
                     </tbody>
                 </table>
             </div>

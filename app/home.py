@@ -372,7 +372,18 @@ async def buscar_productos(
 @router.get("/terminos", response_class=HTMLResponse)
 async def terminos(request: Request):
     templates = request.app.state.templates
-    return templates.TemplateResponse(request, "terminos.html", {})
+    
+    # Obtenemos la promoción activa
+    promocion = db.obtener_promocion_activa()
+    
+    # Filtramos las exclusiones que pertenecen a esta promoción específica
+    id_promo = promocion["id_promocion"] if promocion else None
+    excluidos = db.obtener_referencias_excluidas(id_promo)
+    
+    return templates.TemplateResponse(request, "terminos.html", {
+        "promocion": promocion,
+        "excluidos": excluidos
+    })
 
 
 @router.get("/producto/{referencia}", response_class=HTMLResponse)
