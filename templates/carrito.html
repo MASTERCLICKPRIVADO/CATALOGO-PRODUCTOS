@@ -247,8 +247,15 @@
                     <p class="reserva-subtitle" style="margin: 15px 0 20px 0; font-size: 15px;">
                         Próximamente personal de Master Series se pondrá en contacto contigo para confirmar los artículos, costo de envío y realizar el pago.
                     </p>
-                    <div class="reserva-btns" style="justify-content: center;">
-                        <button type="button" id="btn-entendido-exito" class="reserva-btn-confirm" style="flex: 1; background: #8a8f64;">
+                    <p class="reserva-subtitle" style="margin: -5px 0 18px 0; font-size: 13px; color: #555;">
+                        Descarga el comprobante de tu reserva en PDF:
+                    </p>
+                    <div class="reserva-btns" style="justify-content: center; gap: 12px; flex-wrap: wrap;">
+                        <a id="btn-descargar-pdf" href="#" class="reserva-btn-confirm"
+                           style="flex: 1; min-width: 180px; background: #2e7d32; text-decoration: none; text-align: center; display: inline-block;">
+                            ⬇️ Descargar comprobante PDF
+                        </a>
+                        <button type="button" id="btn-entendido-exito" class="reserva-btn-confirm" style="flex: 1; min-width: 120px; background: #8a8f64;">
                             Entendido
                         </button>
                     </div>
@@ -504,7 +511,18 @@
                     // Mostrar modal de éxito
                     const modalExito = document.getElementById('modal-exito-reserva');
                     const btnEntendido = document.getElementById('btn-entendido-exito');
-                    
+                    const btnDescargarPdf = document.getElementById('btn-descargar-pdf');
+
+                    // Apuntar el botón de descarga al comprobante PDF de esta reserva.
+                    if (btnDescargarPdf) {
+                        if (data.reserva_id) {
+                            btnDescargarPdf.href = '/carrito/reserva/' + data.reserva_id + '/pdf';
+                            btnDescargarPdf.style.display = 'inline-block';
+                        } else {
+                            btnDescargarPdf.style.display = 'none';
+                        }
+                    }
+
                     if (modalExito && btnEntendido) {
                         modalExito.classList.add('active');
                         btnEntendido.addEventListener('click', () => {

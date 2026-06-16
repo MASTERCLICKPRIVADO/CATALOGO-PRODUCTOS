@@ -9,3 +9,5 @@ itsdangerous
 psycopg[binary]
 python-dotenv
 bcrypt
+xhtml2pdf
+requests

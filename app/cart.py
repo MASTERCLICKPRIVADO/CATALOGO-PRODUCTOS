@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 import pandas as pd
 
 from app import db
 from app import home
+from app import documentos
 
 router = APIRouter()
 
@@ -435,6 +436,53 @@ async def reservar_carrito(
         "reserva_id": reserva_id,
         "total_items": 0,
     })
+
+
+@router.get("/carrito/reserva/{reserva_id}/pdf")
+async def descargar_comprobante_reserva(request: Request, reserva_id: int):
+    """
+    Genera EN TIEMPO REAL el comprobante de la reserva en formato PDF y lo
+    envía directo al navegador. El archivo nunca se guarda en disco ni en la
+    base de datos: se construye en memoria (BytesIO) con la plantilla fija
+    `comprobante_reserva.html` y los datos actuales de la reserva.
+
+    Solo el dueño de la reserva (usuario en sesión) puede descargarla.
+    """
+    usuario = request.session.get("user")
+    if not usuario:
+        return RedirectResponse(url="/login")
+
+    reserva = db.obtener_reserva(reserva_id, usuario=usuario)
+    if not reserva:
+        return JSONResponse(
+            {"ok": False, "mensaje": "Reserva no encontrada."},
+            status_code=404,
+        )
+
+    # La tabla `reservas` no guarda la imagen del artículo: la resolvemos
+    # desde el catálogo en memoria (app.state.df) por Referencia, para poder
+    # mostrarla en el comprobante PDF.
+    df = request.app.state.df
+    if df is not None and not df.empty and "Imagen" in df.columns:
+        for it in reserva["items"]:
+            ref = str(it.get("referencia", ""))
+            fila = df[df["Referencia"].astype(str) == ref]
+            it["imagen"] = "" if fila.empty else str(fila.iloc[0].get("Imagen", "") or "")
+
+    try:
+        pdf_buffer = documentos.generar_comprobante_reserva_pdf(reserva)
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "mensaje": f"No se pudo generar el comprobante: {e}"},
+            status_code=500,
+        )
+
+    filename = f"reserva_{reserva_id}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/api/carrito/contador")

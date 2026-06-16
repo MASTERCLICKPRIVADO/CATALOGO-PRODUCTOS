@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Comprobante de Reserva #{{ reserva.reserva_id }}</title>
+    <style>
+        @page {
+            size: a4 portrait;
+            margin: 1.6cm 1.4cm 2cm 1.4cm;
+            @frame footer_frame {
+                -pdf-frame-content: footer_content;
+                bottom: 0.8cm; left: 1.4cm; right: 1.4cm; height: 1cm;
+            }
+        }
+
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            color: #2b2b2b;
+            font-size: 11px;
+        }
+
+        /* ---- Encabezado ---- */
+        .header { border-bottom: 3px solid #8a8f64; padding-bottom: 10px; }
+        .brand-name { font-size: 22px; font-weight: bold; color: #2e3d2f; }
+        .brand-sub { font-size: 10px; color: #8a8f64; letter-spacing: 2px; }
+        .doc-title { font-size: 15px; font-weight: bold; color: #2e7d32; text-align: right; }
+        .doc-meta { font-size: 10px; color: #666; text-align: right; }
+        .logo { width: 70px; height: auto; }
+
+        /* ---- Secciones ---- */
+        .section-title {
+            background-color: #8a8f64; color: #ffffff;
+            font-size: 11px; font-weight: bold;
+            padding: 5px 8px; margin: 16px 0 8px 0;
+        }
+        .info-table { width: 100%; font-size: 10.5px; }
+        .info-table td { padding: 3px 4px; vertical-align: top; }
+        .info-label { color: #777; width: 90px; }
+        .info-value { color: #2b2b2b; font-weight: bold; }
+
+        /* ---- Tabla de artículos ---- */
+        .items { width: 100%; border-collapse: collapse; margin-top: 4px; }
+        .items th {
+            background-color: #2e3d2f; color: #ffffff;
+            font-size: 10px; padding: 7px 6px; text-align: left;
+        }
+        .items td {
+            padding: 7px 6px; font-size: 10.5px;
+            border-bottom: 1px solid #e2e2e2;
+        }
+        .items .num { text-align: right; }
+        .items .center { text-align: center; }
+        .items .prod-img { width: 44px; height: auto; }
+        .img-cell { text-align: center; vertical-align: middle; }
+        .no-img { font-size: 8px; color: #bbb; }
+
+        .totals { width: 45%; margin-left: 55%; margin-top: 12px; }
+        .totals td { padding: 5px 6px; font-size: 11px; }
+        .totals .label { color: #555; text-align: right; }
+        .totals .total-row td {
+            font-size: 14px; font-weight: bold; color: #2e7d32;
+            border-top: 2px solid #8a8f64;
+        }
+
+        .note {
+            margin-top: 22px; padding: 10px 12px;
+            background-color: #f4f5ee; border-left: 4px solid #8a8f64;
+            font-size: 10px; color: #555;
+        }
+        .footer-text { font-size: 9px; color: #999; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <!-- Encabezado con logo + marca -->
+    <table class="header" style="width:100%;">
+        <tr>
+            <td style="width:80px; vertical-align:middle;">
+                <img src="/static/img/logo1.jpg" class="logo" alt="Master Series">
+            </td>
+            <td style="vertical-align:middle;">
+                <div class="brand-name">Master Series</div>
+                <div class="brand-sub">CATÁLOGO DE PRODUCTOS</div>
+            </td>
+            <td style="vertical-align:middle;">
+                <div class="doc-title">COMPROBANTE DE RESERVA</div>
+                <div class="doc-meta">N° {{ reserva.reserva_id }}</div>
+                <div class="doc-meta">Fecha: {{ fecha }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Datos del cliente -->
+    <div class="section-title">DATOS DEL CLIENTE</div>
+    <table class="info-table">
+        <tr>
+            <td class="info-label">Nombre</td>
+            <td class="info-value">{{ datos.nombre }} {{ datos.apellido }}</td>
+            <td class="info-label">Cédula</td>
+            <td class="info-value">{{ datos.cedula }}</td>
+        </tr>
+        <tr>
+            <td class="info-label">Correo</td>
+            <td class="info-value">{{ datos.correo }}</td>
+            <td class="info-label">Celular</td>
+            <td class="info-value">{{ datos.celular }}</td>
+        </tr>
+        <tr>
+            <td class="info-label">Dirección</td>
+            <td class="info-value">{{ datos.direccion }}</td>
+            <td class="info-label">Ciudad de envío</td>
+            <td class="info-value">{{ datos.ciudad_envio }}</td>
+        </tr>
+    </table>
+
+    <!-- Artículos reservados -->
+    <div class="section-title">ARTÍCULOS RESERVADOS</div>
+    <table class="items">
+        <thead>
+            <tr>
+                <th class="center" style="width:13%;">Imagen</th>
+                <th style="width:31%;">Producto</th>
+                <th style="width:13%;">Referencia</th>
+                <th class="center" style="width:9%;">Talla</th>
+                <th class="center" style="width:8%;">Cant.</th>
+                <th class="num" style="width:13%;">P. Unit.</th>
+                <th class="num" style="width:13%;">Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td class="img-cell">
+                    {% if item.imagen_datauri %}
+                        <img src="{{ item.imagen_datauri }}" class="prod-img" alt="{{ item.nombre_producto }}">
+                    {% else %}
+                        <span class="no-img">Sin imagen</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.nombre_producto }}</td>
+                <td>{{ item.referencia }}</td>
+                <td class="center">{{ item.talla }}</td>
+                <td class="center">{{ item.cantidad }}</td>
+                <td class="num">{{ item.precio_unitario | currency }}</td>
+                <td class="num">{{ item.subtotal | currency }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Totales -->
+    <table class="totals">
+        <tr class="total-row">
+            <td class="label">TOTAL</td>
+            <td class="num">{{ total | currency }}</td>
+        </tr>
+    </table>
+
+    <div class="note">
+        Esta reserva no constituye una compra finalizada. Próximamente personal de
+        Master Series se pondrá en contacto contigo para confirmar los artículos,
+        el costo de envío y realizar el pago. Conserva este comprobante como
+        referencia de tu reserva.
+    </div>
+
+    <!-- Pie de página (se repite en cada hoja) -->
+    <div id="footer_content" class="footer-text">
+        Master Series &bull; Comprobante de Reserva N° {{ reserva.reserva_id }} &bull; Documento generado automáticamente
+    </div>
+
+</body>
+</html>

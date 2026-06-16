@@ -401,6 +401,85 @@ def guardar_reserva(usuario, datos_cliente: dict, items: list,
     return reserva_id
 
 
+def obtener_reserva(reserva_id, usuario=None):
+    """
+    Devuelve una reserva completa para generar el comprobante PDF.
+
+    Estructura: {
+        "reserva_id", "datos_cliente" {nombre, apellido, cedula, correo,
+        celular, direccion, ciudad_envio}, "items" [{...}], "total".
+    }
+    Si se pasa `usuario`, restringe la búsqueda a sus propias reservas
+    (defensa contra que un usuario descargue el comprobante de otro).
+    Devuelve None si no existe o no le pertenece.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if usuario is not None:
+                cur.execute(
+                    """SELECT reserva_id, usuario, nombre, apellido, cedula,
+                              correo, celular, direccion, ciudad_envio,
+                              referencia, talla, ciudad_item, nombre_producto,
+                              precio_unitario, cantidad, subtotal, codigo_referido
+                         FROM reservas
+                        WHERE reserva_id = %s AND usuario = %s
+                        ORDER BY id""",
+                    (int(reserva_id), str(usuario)),
+                )
+            else:
+                cur.execute(
+                    """SELECT reserva_id, usuario, nombre, apellido, cedula,
+                              correo, celular, direccion, ciudad_envio,
+                              referencia, talla, ciudad_item, nombre_producto,
+                              precio_unitario, cantidad, subtotal, codigo_referido
+                         FROM reservas
+                        WHERE reserva_id = %s
+                        ORDER BY id""",
+                    (int(reserva_id),),
+                )
+            rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    primera = rows[0]
+    datos_cliente = {
+        "nombre": primera.get("nombre", ""),
+        "apellido": primera.get("apellido", ""),
+        "cedula": primera.get("cedula", ""),
+        "correo": primera.get("correo", ""),
+        "celular": primera.get("celular", ""),
+        "direccion": primera.get("direccion", ""),
+        "ciudad_envio": primera.get("ciudad_envio", ""),
+    }
+
+    items = []
+    total = 0
+    for r in rows:
+        cantidad = int(r.get("cantidad", 1) or 1)
+        precio_unit = int(r.get("precio_unitario", 0) or 0)
+        subtotal = int(r.get("subtotal", precio_unit * cantidad) or 0)
+        total += subtotal
+        items.append({
+            "referencia": r.get("referencia", ""),
+            "talla": r.get("talla", ""),
+            "ciudad_item": r.get("ciudad_item", ""),
+            "nombre_producto": r.get("nombre_producto", ""),
+            "precio_unitario": precio_unit,
+            "cantidad": cantidad,
+            "subtotal": subtotal,
+        })
+
+    return {
+        "reserva_id": int(primera.get("reserva_id", reserva_id)),
+        "usuario": primera.get("usuario", ""),
+        "codigo_referido": primera.get("codigo_referido", ""),
+        "datos_cliente": datos_cliente,
+        "items": items,
+        "total": total,
+    }
+
+
 # ----------------------- PROMOCIONES Y EXCLUSIONES -----------------------
 
 def obtener_promocion_activa():
