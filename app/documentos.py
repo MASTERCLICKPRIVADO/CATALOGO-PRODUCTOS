@@ -14,7 +14,7 @@ Se usa xhtml2pdf (pisa) porque es Python puro: no requiere librerías nativas
 
 import base64
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from io import BytesIO
 
 import requests
@@ -118,13 +118,20 @@ def generar_comprobante_reserva_pdf(reserva: dict) -> BytesIO:
         it["imagen_datauri"] = _imagen_a_datauri(it.get("imagen", ""))
         items.append(it)
 
+    # Usar la fecha guardada con la reserva (hora de Bogotá) para que el
+    # comprobante coincida exactamente con lo almacenado en la BD. Si por
+    # alguna razón no viniera, calculamos la hora de Bogotá (UTC-5).
+    fecha = reserva.get("fecha")
+    if not fecha:
+        fecha = datetime.now(timezone(timedelta(hours=-5))).strftime("%d/%m/%Y %I:%M %p")
+
     template = _env.get_template("comprobante_reserva.html")
     html = template.render(
         reserva=reserva,
         datos=reserva.get("datos_cliente", {}),
         items=items,
         total=reserva.get("total", 0),
-        fecha=datetime.now().strftime("%d/%m/%Y %I:%M %p"),
+        fecha=fecha,
     )
 
     buffer = BytesIO()

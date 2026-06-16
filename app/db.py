@@ -9,13 +9,33 @@ para evitar problemas de estado entre conexiones reutilizadas.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Colombia no usa horario de verano: siempre UTC-5. Usamos un offset fijo
+# (en vez de depender de la zona horaria de la sesión, que el pooler de
+# Supabase ignora y deja en UTC).
+BOGOTA_TZ = timezone(timedelta(hours=-5))
+
+
+def hora_bogota_para_guardar():
+    """
+    Devuelve la hora actual de Bogotá lista para guardar en una columna
+    `timestamptz` de modo que el dashboard de Supabase (que muestra los
+    timestamptz en UTC) la despliegue con la hora colombiana correcta.
+
+    Se calcula la hora real de Bogotá y luego se re-etiqueta como UTC, así
+    el instante almacenado coincide con la hora de pared colombiana,
+    independientemente de la zona horaria de la conexión.
+    """
+    ahora_bogota = datetime.now(BOGOTA_TZ)
+    return ahora_bogota.replace(tzinfo=timezone.utc)
+
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -366,19 +386,24 @@ def guardar_reserva(usuario, datos_cliente: dict, items: list,
             cur.execute("SELECT nextval('reservas_reserva_id_seq') AS rid")
             reserva_id = int(cur.fetchone()["rid"])
 
+            # Una sola marca de tiempo (hora de Bogotá) para TODAS las filas
+            # de esta reserva, para que el comprobante y la BD coincidan.
+            fecha_reserva = hora_bogota_para_guardar()
+
             for it in items:
                 cantidad = int(it.get("cantidad", 1) or 1)
                 precio_unit = int(it.get("precio_unitario", 0) or 0)
                 cur.execute(
                     """INSERT INTO reservas
-                           (reserva_id, usuario, nombre, apellido, cedula,
+                           (reserva_id, fecha, usuario, nombre, apellido, cedula,
                             correo, celular, direccion, ciudad_envio,
                             referencia, talla, ciudad_item, nombre_producto,
                             precio_unitario, cantidad, subtotal, codigo_referido)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                                %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         reserva_id,
+                        fecha_reserva,
                         str(usuario),
                         str(datos_cliente.get("nombre", "")),
                         str(datos_cliente.get("apellido", "")),
@@ -417,7 +442,7 @@ def obtener_reserva(reserva_id, usuario=None):
         with conn.cursor() as cur:
             if usuario is not None:
                 cur.execute(
-                    """SELECT reserva_id, usuario, nombre, apellido, cedula,
+                    """SELECT reserva_id, fecha, usuario, nombre, apellido, cedula,
                               correo, celular, direccion, ciudad_envio,
                               referencia, talla, ciudad_item, nombre_producto,
                               precio_unitario, cantidad, subtotal, codigo_referido
@@ -428,7 +453,7 @@ def obtener_reserva(reserva_id, usuario=None):
                 )
             else:
                 cur.execute(
-                    """SELECT reserva_id, usuario, nombre, apellido, cedula,
+                    """SELECT reserva_id, fecha, usuario, nombre, apellido, cedula,
                               correo, celular, direccion, ciudad_envio,
                               referencia, talla, ciudad_item, nombre_producto,
                               precio_unitario, cantidad, subtotal, codigo_referido
@@ -443,6 +468,19 @@ def obtener_reserva(reserva_id, usuario=None):
         return None
 
     primera = rows[0]
+
+    # Formatear la fecha guardada (hora de Bogotá). El valor se almacenó
+    # re-etiquetado como UTC, así que lo convertimos a UTC antes de formatear
+    # para recuperar la hora de pared colombiana sin importar la zona horaria
+    # con la que la conexión leyó el dato.
+    fecha_dt = primera.get("fecha")
+    if fecha_dt is not None:
+        if getattr(fecha_dt, "tzinfo", None) is not None:
+            fecha_dt = fecha_dt.astimezone(timezone.utc)
+        fecha_str = fecha_dt.strftime("%d/%m/%Y %I:%M %p")
+    else:
+        fecha_str = ""
+
     datos_cliente = {
         "nombre": primera.get("nombre", ""),
         "apellido": primera.get("apellido", ""),
@@ -474,6 +512,7 @@ def obtener_reserva(reserva_id, usuario=None):
         "reserva_id": int(primera.get("reserva_id", reserva_id)),
         "usuario": primera.get("usuario", ""),
         "codigo_referido": primera.get("codigo_referido", ""),
+        "fecha": fecha_str,
         "datos_cliente": datos_cliente,
         "items": items,
         "total": total,
