@@ -110,13 +110,43 @@ def generar_comprobante_reserva_pdf(reserva: dict) -> BytesIO:
 
     `reserva` es el dict que devuelve `db.obtener_reserva`.
     """
-    # Convertir la URL de imagen de cada artículo a un data-URI incrustable.
-    # Se hace una copia para no mutar el dict de la reserva original.
+    # Enriquecer cada artículo: imagen incrustable + datos de descuento.
+    # `precio_unitario` (guardado) es el precio FINAL con descuento; el precio
+    # ORIGINAL viene en `precio_antes` (resuelto desde el catálogo). Se hace una
+    # copia para no mutar el dict de la reserva original.
     items = []
+    total_original = 0
+    total_descuento = 0
     for it in reserva.get("items", []):
         it = dict(it)
         it["imagen_datauri"] = _imagen_a_datauri(it.get("imagen", ""))
+
+        cantidad = int(it.get("cantidad", 1) or 1)
+        precio_desc = int(it.get("precio_unitario", 0) or 0)   # final (con descuento)
+        precio_orig = int(it.get("precio_antes", 0) or 0)      # original (catálogo)
+
+        # Si no hay precio original válido o no supera al final, el artículo
+        # NO tiene descuento: solo se mostrará el precio original.
+        if precio_orig <= precio_desc:
+            precio_orig = precio_desc
+            it["tiene_descuento"] = False
+        else:
+            it["tiene_descuento"] = True
+
+        subtotal_desc = int(it.get("subtotal", precio_desc * cantidad) or 0)
+        it["precio_original"] = precio_orig
+        it["precio_descuento"] = precio_desc
+        it["subtotal_original"] = precio_orig * cantidad
+        it["subtotal_descuento"] = subtotal_desc
+
+        total_original += precio_orig * cantidad
+        total_descuento += subtotal_desc
         items.append(it)
+
+    # Total final con descuento: la reserva es la fuente de verdad si lo trae.
+    total_final = int(reserva.get("total", total_descuento) or total_descuento)
+    ahorro_total = max(total_original - total_final, 0)
+    hay_descuento_total = total_original > total_final
 
     # Usar la fecha guardada con la reserva (hora de Bogotá) para que el
     # comprobante coincida exactamente con lo almacenado en la BD. Si por
@@ -130,7 +160,10 @@ def generar_comprobante_reserva_pdf(reserva: dict) -> BytesIO:
         reserva=reserva,
         datos=reserva.get("datos_cliente", {}),
         items=items,
-        total=reserva.get("total", 0),
+        total_original=total_original,
+        total=total_final,
+        ahorro_total=ahorro_total,
+        hay_descuento_total=hay_descuento_total,
         fecha=fecha,
     )
 

@@ -473,15 +473,27 @@ async def descargar_comprobante_reserva(request: Request, reserva_id: int):
             status_code=404,
         )
 
-    # La tabla `reservas` no guarda la imagen del artículo: la resolvemos
-    # desde el catálogo en memoria (app.state.df) por Referencia, para poder
-    # mostrarla en el comprobante PDF.
+    # La tabla `reservas` no guarda ni la imagen ni el precio ORIGINAL del
+    # artículo (solo `precio_unitario`, que es el precio FINAL con descuento).
+    # Ambos los resolvemos desde el catálogo en memoria (app.state.df) por
+    # Referencia (preferiendo la fila de la ciudad del ítem) para poder mostrar
+    # en el comprobante PDF el descuento de cada artículo.
     df = request.app.state.df
-    if df is not None and not df.empty and "Imagen" in df.columns:
+    if df is not None and not df.empty and "Referencia" in df.columns:
         for it in reserva["items"]:
             ref = str(it.get("referencia", ""))
+            ciudad_item = str(it.get("ciudad_item", ""))
             fila = df[df["Referencia"].astype(str) == ref]
-            it["imagen"] = "" if fila.empty else str(fila.iloc[0].get("Imagen", "") or "")
+            if "Ciudad" in df.columns and ciudad_item:
+                fila_ciudad = fila[fila["Ciudad"].astype(str) == ciudad_item]
+                if not fila_ciudad.empty:
+                    fila = fila_ciudad
+            if fila.empty:
+                it["imagen"] = ""
+                it["precio_antes"] = 0
+            else:
+                it["imagen"] = str(fila.iloc[0].get("Imagen", "") or "")
+                it["precio_antes"] = _to_int(fila.iloc[0].get("precio_antes", ""))
 
     try:
         pdf_buffer = documentos.generar_comprobante_reserva_pdf(reserva)

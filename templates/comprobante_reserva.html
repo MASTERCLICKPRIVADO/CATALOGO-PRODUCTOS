@@ -42,21 +42,27 @@
         .items { width: 100%; border-collapse: collapse; margin-top: 4px; }
         .items th {
             background-color: #2e3d2f; color: #ffffff;
-            font-size: 10px; padding: 7px 6px; text-align: left;
+            font-size: 9px; padding: 6px 5px; text-align: left;
         }
         .items td {
-            padding: 7px 6px; font-size: 10.5px;
+            padding: 6px 5px; font-size: 9.5px;
             border-bottom: 1px solid #e2e2e2;
         }
         .items .num { text-align: right; }
         .items .center { text-align: center; }
-        .items .prod-img { width: 44px; height: auto; }
+        .items .prod-img { width: 40px; height: auto; }
         .img-cell { text-align: center; vertical-align: middle; }
         .no-img { font-size: 8px; color: #bbb; }
+        /* Precio original tachado cuando el artículo tiene descuento */
+        .precio-tachado { text-decoration: line-through; color: #999; }
+        .precio-dcto { color: #2e7d32; font-weight: bold; }
+        .sin-dcto { color: #bbb; }
 
-        .totals { width: 45%; margin-left: 55%; margin-top: 12px; }
+        .totals { width: 50%; margin-left: 50%; margin-top: 12px; }
         .totals td { padding: 5px 6px; font-size: 11px; }
         .totals .label { color: #555; text-align: right; }
+        .totals .dcto td { color: #c62828; }
+        .totals .orig td { color: #999; }
         .totals .total-row td {
             font-size: 14px; font-weight: bold; color: #2e7d32;
             border-top: 2px solid #8a8f64;
@@ -118,13 +124,14 @@
     <table class="items">
         <thead>
             <tr>
-                <th class="center" style="width:13%;">Imagen</th>
-                <th style="width:31%;">Producto</th>
-                <th style="width:13%;">Referencia</th>
-                <th class="center" style="width:9%;">Talla</th>
-                <th class="center" style="width:8%;">Cant.</th>
-                <th class="num" style="width:13%;">P. Unit.</th>
-                <th class="num" style="width:13%;">Subtotal</th>
+                <th class="center" style="width:10%;">Imagen</th>
+                <th style="width:22%;">Producto</th>
+                <th style="width:11%;">Referencia</th>
+                <th class="center" style="width:8%;">Talla</th>
+                <th class="center" style="width:7%;">Cant.</th>
+                <th class="num" style="width:14%;">Precio original</th>
+                <th class="num" style="width:14%;">Precio con dcto.</th>
+                <th class="num" style="width:14%;">Subtotal</th>
             </tr>
         </thead>
         <tbody>
@@ -141,8 +148,17 @@
                 <td>{{ item.referencia }}</td>
                 <td class="center">{{ item.talla }}</td>
                 <td class="center">{{ item.cantidad }}</td>
-                <td class="num">{{ item.precio_unitario | currency }}</td>
-                <td class="num">{{ item.subtotal | currency }}</td>
+                <td class="num">
+                    <span class="{% if item.tiene_descuento %}precio-tachado{% endif %}">{{ item.precio_original | currency }}</span>
+                </td>
+                <td class="num">
+                    {% if item.tiene_descuento %}
+                        <span class="precio-dcto">{{ item.precio_descuento | currency }}</span>
+                    {% else %}
+                        <span class="sin-dcto">—</span>
+                    {% endif %}
+                </td>
+                <td class="num">{{ item.subtotal_descuento | currency }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -150,8 +166,18 @@
 
     <!-- Totales -->
     <table class="totals">
+        {% if hay_descuento_total %}
+        <tr class="orig">
+            <td class="label">Precio original</td>
+            <td class="num"><span class="precio-tachado">{{ total_original | currency }}</span></td>
+        </tr>
+        <tr class="dcto">
+            <td class="label">Descuento</td>
+            <td class="num">- {{ ahorro_total | currency }}</td>
+        </tr>
+        {% endif %}
         <tr class="total-row">
-            <td class="label">TOTAL</td>
+            <td class="label">TOTAL{% if hay_descuento_total %} con descuento{% endif %}</td>
             <td class="num">{{ total | currency }}</td>
         </tr>
     </table>
