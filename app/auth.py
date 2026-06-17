@@ -62,7 +62,9 @@ async def login_post(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
-    codigo_referido: str = Form(...),
+    # Opcional a nivel de API: el usuario master puede dejarlo en blanco.
+    # La obligatoriedad para usuarios normales se valida dentro del handler.
+    codigo_referido: str = Form(""),
 ):
     """
     Flujo de login con código de referido obligatorio:
@@ -94,6 +96,27 @@ async def login_post(
             print(f"⚠️  No se pudo migrar la contraseña a bcrypt para {user['usuario']}: {e}")
 
     cod = (codigo_referido or "").strip()
+
+    # Usuario master: NO requiere código de referido. Ve TODO el inventario
+    # (todas las ciudades), así que puede dejar el campo en blanco y entrar.
+    if str(user.get("permisos") or "").strip().lower() == "master":
+        ciudad = str(user.get("ciudad") or "").strip()
+        # Si por alguna razón el master sí ingresó un código válido, respetamos
+        # la ciudad de ese código (no es obligatorio).
+        if cod:
+            referido = db.obtener_referido(cod)
+            if referido and str(referido.get("ciudad") or "").strip():
+                ciudad = str(referido.get("ciudad") or "").strip()
+                db.actualizar_referido_y_ciudad(user["usuario"], cod, ciudad)
+
+        request.session["user"] = user["usuario"]
+        request.session["city"] = ciudad
+        request.session["referral_code"] = cod
+        request.session["permisos"] = "master"
+        request.session["show_promo"] = True
+        request.session["fresh_login"] = True
+        return RedirectResponse(url="/", status_code=303)
+
     if not cod:
         return _render_login(
             request,
@@ -125,6 +148,9 @@ async def login_post(
     request.session["user"] = user["usuario"]
     request.session["city"] = ciudad
     request.session["referral_code"] = cod
+    # Permiso del usuario (p.ej. "master" ve TODO el inventario, de todas
+    # las ciudades y tiendas, no solo el de su ciudad).
+    request.session["permisos"] = str(user.get("permisos") or "").strip().lower()
     request.session["show_promo"] = True
     # Bandera que indica "este es el primer pageview tras el login";
     # el cliente la usa para inicializar el marcador de sessionStorage.
@@ -152,6 +178,8 @@ async def perfil(request: Request):
         request.session["referral_code"] = perfil_data["codigo_referido"]
     if perfil_data.get("ciudad"):
         request.session["city"] = perfil_data["ciudad"]
+    # Refrescar el permiso por si la sesión es antigua (login previo al campo).
+    request.session["permisos"] = str(perfil_data.get("permisos") or "").strip().lower()
 
     return templates.TemplateResponse(
         request,
@@ -261,6 +289,8 @@ async def registro_post(
     request.session["user"] = correo_norm
     request.session["city"] = ciudad
     request.session["referral_code"] = cod
+    # Los usuarios recién registrados no tienen permisos especiales.
+    request.session["permisos"] = ""
     request.session["show_promo"] = True
     request.session["fresh_login"] = True
     return RedirectResponse(url="/", status_code=303)

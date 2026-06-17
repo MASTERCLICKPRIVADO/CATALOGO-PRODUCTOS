@@ -176,13 +176,21 @@ async def agregar_al_carrito(
     referencia: str = Form(...),
     talla: str = Form(...),
     cantidad: int = Form(1),
+    ciudad_sel: str = Form(""),
 ):
     usuario = request.session.get("user")
-    ciudad = request.session.get("city")
     if not usuario:
         return JSONResponse({"ok": False, "mensaje": "Debes iniciar sesión."}, status_code=401)
+
+    # El usuario master puede reservar desde cualquier ciudad: usa la ciudad
+    # de la ubicación elegida en el detalle. El usuario normal SIEMPRE usa la
+    # ciudad de su sesión (ignoramos `ciudad_sel` por seguridad).
+    if home.es_master(request):
+        ciudad = (ciudad_sel or "").strip() or request.session.get("city")
+    else:
+        ciudad = request.session.get("city")
     if not ciudad:
-        return JSONResponse({"ok": False, "mensaje": "Tu usuario no tiene ciudad asignada."}, status_code=400)
+        return JSONResponse({"ok": False, "mensaje": "No se pudo determinar la ciudad del artículo."}, status_code=400)
 
     if cantidad < 1:
         return JSONResponse({"ok": False, "mensaje": "La cantidad debe ser al menos 1."}, status_code=400)
@@ -194,6 +202,12 @@ async def agregar_al_carrito(
     producto_row = df[df["Referencia"].astype(str) == str(referencia)]
     if producto_row.empty:
         return JSONResponse({"ok": False, "mensaje": "Producto no encontrado."}, status_code=404)
+
+    # Preferir la fila de la ciudad elegida para tomar nombre/precio/imagen
+    # correctos (un master puede agregar desde una ciudad distinta a la suya).
+    producto_row_ciudad = producto_row[producto_row["Ciudad"].astype(str) == str(ciudad)]
+    if not producto_row_ciudad.empty:
+        producto_row = producto_row_ciudad
 
     stock = _stock_disponible_ciudad(df, referencia, talla, ciudad)
     ya_en_carrito = db.contar_items_en_carrito(usuario, referencia, talla, ciudad)

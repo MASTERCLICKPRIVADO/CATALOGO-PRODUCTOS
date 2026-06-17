@@ -118,6 +118,25 @@ def filtrar_por_ciudad(df, ciudad):
     return df[df['Ciudad'].astype(str) == str(ciudad)]
 
 
+def es_master(request) -> bool:
+    """
+    True si el usuario en sesión tiene permiso 'master': ve TODO el inventario
+    (todas las ciudades y tiendas), no solo el de su ciudad.
+    """
+    return str(request.session.get("permisos") or "").strip().lower() == "master"
+
+
+def aplicar_scope_ciudad(request, df):
+    """
+    Aplica el filtro de ciudad SALVO que el usuario sea master.
+    - Usuario normal → solo el inventario de la ciudad de su sesión.
+    - Usuario master → el inventario completo, sin filtrar por ciudad.
+    """
+    if es_master(request):
+        return df
+    return filtrar_por_ciudad(df, request.session.get("city", ""))
+
+
 def aplicar_orden_dcto(df, orden):
     """
     Ordena el DataFrame por el % de descuento (`%DCTO`) cuando el usuario
@@ -196,9 +215,8 @@ async def ver_catalogo(request: Request, page: int = 1, orden_dcto: str = ""):
     if df is None or df.empty:
         return templates.TemplateResponse(request, "home.html", {"productos": [], "mensaje": "No hay productos disponibles."})
 
-    # Filtrar por ciudad del usuario logueado
-    ciudad_usuario = request.session.get("city", "")
-    df = filtrar_por_ciudad(df, ciudad_usuario)
+    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades)
+    df = aplicar_scope_ciudad(request, df)
 
     # Solo mostrar productos con stock disponible
     if df is not None and not df.empty and 'Inventario' in df.columns:
@@ -245,9 +263,8 @@ async def api_productos(
 ):
     df = request.app.state.df  # ✅ Desde memoria
 
-    # Filtrar por ciudad del usuario logueado
-    ciudad_usuario = request.session.get("city", "")
-    df = filtrar_por_ciudad(df, ciudad_usuario)
+    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades)
+    df = aplicar_scope_ciudad(request, df)
 
     # Solo mostrar productos con stock disponible
     if df is not None and not df.empty and 'Inventario' in df.columns:
@@ -302,9 +319,8 @@ async def buscar_productos(
     templates = request.app.state.templates
     df_all = request.app.state.df  # ✅ Desde memoria
 
-    # Filtrar por ciudad del usuario logueado
-    ciudad_usuario = request.session.get("city", "")
-    df_all = filtrar_por_ciudad(df_all, ciudad_usuario)
+    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades)
+    df_all = aplicar_scope_ciudad(request, df_all)
 
     # Solo mostrar productos con stock disponible
     if df_all is not None and not df_all.empty and 'Inventario' in df_all.columns:
@@ -391,9 +407,10 @@ async def detalle_producto(request: Request, referencia: str):
     templates = request.app.state.templates
     df = request.app.state.df  # ✅ Desde memoria
 
-    # Filtrar por ciudad del usuario logueado
+    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades)
     ciudad_usuario = request.session.get("city", "")
-    df = filtrar_por_ciudad(df, ciudad_usuario)
+    master = es_master(request)
+    df = aplicar_scope_ciudad(request, df)
 
     # Solo mostrar variantes con stock disponible
     if df is not None and not df.empty and 'Inventario' in df.columns:
@@ -405,11 +422,30 @@ async def detalle_producto(request: Request, referencia: str):
 
     producto = variantes.iloc[0].to_dict()
 
-    # Tallas con su stock en la ciudad del usuario
+    # Tallas con su stock (para el master, sumado entre TODAS las ciudades).
     tallas_agrupadas = variantes.groupby(['Talla', 'TallaCM', 'TallaUSCO'], sort=False)['Inventario'].sum().reset_index()
     tallas = tallas_agrupadas.to_dict(orient="records")
     for t in tallas:
         t['stock_ciudad'] = int(t['Inventario'])
+
+    # Para el master: desglose por ciudad + tienda + talla, así sabe en qué
+    # ciudad y tienda está cada unidad. Cada fila es seleccionable para
+    # reservar desde esa ciudad concreta.
+    ubicaciones = []
+    if master:
+        cols = ['Ciudad', 'Tienda', 'Talla', 'TallaCM', 'TallaUSCO']
+        cols = [c for c in cols if c in variantes.columns]
+        agrup = variantes.groupby(cols, sort=False)['Inventario'].sum().reset_index()
+        agrup = agrup.sort_values(['Ciudad', 'Tienda'], kind='mergesort')
+        for r in agrup.to_dict(orient="records"):
+            ubicaciones.append({
+                "ciudad": str(r.get("Ciudad", "")),
+                "tienda": str(r.get("Tienda", "")),
+                "talla": str(r.get("Talla", "")),
+                "talla_cm": str(r.get("TallaCM", "")),
+                "talla_usco": str(r.get("TallaUSCO", "")),
+                "stock": int(r.get("Inventario", 0) or 0),
+            })
 
     filtros = get_filtros_completos(df)
 
@@ -418,6 +454,8 @@ async def detalle_producto(request: Request, referencia: str):
         "tallas": tallas,
         "filtros": filtros,
         "ciudad_usuario": ciudad_usuario,
+        "es_master": master,
+        "ubicaciones": ubicaciones,
     })
 
 
@@ -428,9 +466,8 @@ async def api_sugerencias(request: Request, q: str = ""):  # ✅ Request agregad
 
     df = request.app.state.df  # ✅ Desde memoria
 
-    # Filtrar por ciudad del usuario logueado
-    ciudad_usuario = request.session.get("city", "")
-    df = filtrar_por_ciudad(df, ciudad_usuario)
+    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades)
+    df = aplicar_scope_ciudad(request, df)
 
     # Solo mostrar productos con stock disponible
     if df is not None and not df.empty and 'Inventario' in df.columns:

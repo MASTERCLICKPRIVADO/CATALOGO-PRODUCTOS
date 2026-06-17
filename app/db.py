@@ -73,11 +73,11 @@ def init_storage():
 # ----------------------- USUARIOS -----------------------
 
 def obtener_usuario(usuario):
-    """Devuelve dict {usuario, contrasenia, ciudad, codigo_referido} o None."""
+    """Devuelve dict {usuario, contrasenia, ciudad, codigo_referido, permisos} o None."""
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT usuario, contrasenia, ciudad, codigo_referido FROM usuarios WHERE usuario = %s",
+                "SELECT usuario, contrasenia, ciudad, codigo_referido, permisos FROM usuarios WHERE usuario = %s",
                 (str(usuario),),
             )
             return cur.fetchone()

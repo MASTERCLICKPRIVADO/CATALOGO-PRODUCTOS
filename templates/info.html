@@ -169,6 +169,48 @@
             </div>
 
             <!-- Tallas Disponibles -->
+            {% if es_master %}
+            <!-- Vista MASTER: desglose por ciudad y tienda. Cada fila es
+                 seleccionable y reserva desde esa ciudad concreta. -->
+            <div>
+                <h3 style="color: #8a8f64; margin-bottom: 6px;">
+                    Disponibilidad por ciudad y tienda
+                    <span style="font-size: 13px; color: #777; font-weight: normal;">(todas las sedes)</span>
+                </h3>
+                <p style="font-size: 13px; color: #777; margin-bottom: 12px;">
+                    Selecciona la ubicación desde la que quieres reservar.
+                </p>
+                <div id="tallas-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto;">
+                    {% for u in ubicaciones %}
+                    {% set sin_stock = u.stock <= 0 %}
+                    <div class="talla-opcion"
+                         data-talla="{{ u.talla }}"
+                         data-talla-cm="{{ u.talla_cm }}"
+                         data-talla-usco="{{ u.talla_usco }}"
+                         data-ciudad="{{ u.ciudad }}"
+                         data-tienda="{{ u.tienda }}"
+                         data-stock="{{ u.stock }}"
+                         style="border: 2px solid {% if sin_stock %}#ccc{% else %}#8a8f64{% endif %};
+                                padding: 10px 16px; border-radius: 12px;
+                                display: flex; justify-content: space-between; align-items: center; gap: 12px;
+                                cursor: {% if sin_stock %}not-allowed{% else %}pointer{% endif %};
+                                opacity: {% if sin_stock %}0.5{% else %}1{% endif %};
+                                transition: all 0.15s;">
+                        <div style="text-align: left;">
+                            <span style="display: block; font-weight: bold; font-size: 14px; color: #444;">
+                                📍 {{ u.ciudad }} — {{ u.tienda }}
+                            </span>
+                            <span style="font-size: 12px; color: #777;">
+                                Talla CM: {{ u.talla_cm }} | U.S/CO: {{ u.talla_usco }}
+                            </span>
+                        </div>
+                        <span style="font-size: 12px; color: #777; white-space: nowrap;">Stock: <span class="stock-label">{{ u.stock }}</span></span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <p id="talla-feedback" style="margin-top: 10px; font-size: 14px; color: #777; min-height: 20px;"></p>
+            </div>
+            {% else %}
             <div>
                 <h3 style="color: #8a8f64; margin-bottom: 15px;">
                     Tallas Disponibles{% if ciudad_usuario %} <span style="font-size: 13px; color: #777; font-weight: normal;">({{ ciudad_usuario }})</span>{% endif %}:
@@ -196,6 +238,7 @@
                 </div>
                 <p id="talla-feedback" style="margin-top: 10px; font-size: 14px; color: #777; min-height: 20px;"></p>
             </div>
+            {% endif %}
 
             <!-- Precios -->
             <div style="border-top: 1px solid #eee; padding-top: 10px; margin-top: auto;">
@@ -253,12 +296,15 @@
         const cantidadValor = document.getElementById('cantidad-valor');
         const cantidadHint = document.getElementById('cantidad-hint');
         let tallaSeleccionada = null;
+        let ciudadSeleccionada = null;
+        let divSeleccionado = null;
         let cantidad = 1;
 
         function stockTallaActual() {
-            if (!tallaSeleccionada) return Infinity;
-            const div = document.querySelector(`.talla-opcion[data-talla="${tallaSeleccionada}"]`);
-            return parseInt(div?.dataset.stock || '0', 10);
+            // Usamos el elemento seleccionado directamente porque el master
+            // puede tener la misma talla en varias ciudades (filas repetidas).
+            if (!divSeleccionado) return Infinity;
+            return parseInt(divSeleccionado.dataset.stock || '0', 10);
         }
 
         function actualizarCantidad(nueva) {
@@ -290,7 +336,13 @@
             div.style.background = '#8a8f64';
             div.querySelector('span').style.color = 'white';
             tallaSeleccionada = div.dataset.talla;
-            tallaFeedback.textContent = `Talla seleccionada: CM: ${div.dataset.tallaCm} | U.S/CO: ${div.dataset.tallaUsco}`;
+            ciudadSeleccionada = div.dataset.ciudad || null;
+            divSeleccionado = div;
+            if (ciudadSeleccionada) {
+                tallaFeedback.textContent = `Ubicación: ${div.dataset.ciudad} — ${div.dataset.tienda} | Talla CM: ${div.dataset.tallaCm} | U.S/CO: ${div.dataset.tallaUsco}`;
+            } else {
+                tallaFeedback.textContent = `Talla seleccionada: CM: ${div.dataset.tallaCm} | U.S/CO: ${div.dataset.tallaUsco}`;
+            }
             tallaFeedback.style.color = '#8a8f64';
             actualizarCantidad(1);
         }
@@ -314,6 +366,9 @@
                 fd.append('referencia', btnAgregar.dataset.referencia);
                 fd.append('talla', tallaSeleccionada);
                 fd.append('cantidad', String(cantidad));
+                // Para el master: ciudad de la ubicación elegida (el backend la
+                // ignora para usuarios normales y usa la ciudad de su sesión).
+                if (ciudadSeleccionada) fd.append('ciudad_sel', ciudadSeleccionada);
 
                 const resp = await fetch('/carrito/agregar', { method: 'POST', body: fd });
                 const data = await resp.json();
