@@ -400,14 +400,24 @@ async def reservar_carrito(
         "direccion": direccion.strip(),
         "ciudad_envio": ciudad.strip(),
     }
-    items_reserva = [{
-        "referencia": it["referencia"],
-        "talla": it["talla"],
-        "ciudad_item": it["ciudad"],
-        "nombre_producto": it.get("nombre", ""),
-        "precio_unitario": it.get("precio_final", 0),
-        "cantidad": int(it.get("cantidad", 1) or 1),
-    } for it in items_calc]
+    # Consolidar artículos idénticos (misma referencia + talla + ciudad) en una
+    # sola línea sumando la cantidad. El carrito guarda una fila por unidad, así
+    # que sin esto la reserva quedaría con varias líneas de cantidad 1 para el
+    # mismo artículo. (El precio_final es igual entre unidades idénticas.)
+    items_agrupados = {}
+    for it in items_calc:
+        key = (str(it["referencia"]), str(it["talla"]), str(it["ciudad"]))
+        if key not in items_agrupados:
+            items_agrupados[key] = {
+                "referencia": it["referencia"],
+                "talla": it["talla"],
+                "ciudad_item": it["ciudad"],
+                "nombre_producto": it.get("nombre", ""),
+                "precio_unitario": it.get("precio_final", 0),
+                "cantidad": 0,
+            }
+        items_agrupados[key]["cantidad"] += int(it.get("cantidad", 1) or 1)
+    items_reserva = list(items_agrupados.values())
 
     # Código de referido: lo tomamos de la sesión (lo seteamos en login/registro).
     # Fallback: leerlo desde la tabla `usuarios` por si la sesión es antigua y
