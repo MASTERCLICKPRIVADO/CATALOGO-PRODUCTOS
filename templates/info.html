@@ -274,13 +274,26 @@
                 <span id="cantidad-hint" style="font-size: 12px; color: #888;"></span>
             </div>
 
+            {% if es_invitado %}
+            <button id="btn-whatsapp" type="button"
+                    style="margin-top: 6px; background: #8a8f64; color: white; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span style="display: inline-flex;"><img src="{{ url_for('static', path='img/whatsapp.png') }}" alt="" style="width: 20px; height: 20px;"></span> Reservar por WhatsApp
+            </button>
+            {% else %}
             <button id="btn-agregar-carrito" type="button"
                     data-referencia="{{ producto.Referencia }}"
                     style="margin-top: 6px; background: #8a8f64; color: white;">
                 🛒 Agregar a mi Orden
             </button>
+            {% endif %}
             <button onclick="window.history.back()" style="margin-top: 4px;">Regresar al Catálogo</button>
             <p id="carrito-feedback" style="margin-top: 5px; font-size: 14px; min-height: 20px; text-align: center;"></p>
+
+            {% if es_invitado %}
+            {# Datos para el sorteo de tienda y el mensaje de WhatsApp (solo invitado). #}
+            <script type="application/json" id="tiendas-por-talla-data">{{ tiendas_por_talla | tojson }}</script>
+            <script type="application/json" id="producto-wpp-data">{{ {'nombre': producto.nombre, 'referencia': producto.Referencia, 'ciudad': ciudad_usuario} | tojson }}</script>
+            {% endif %}
         </div>
     </div>
 </section>
@@ -351,7 +364,7 @@
             div.addEventListener('click', () => seleccionarTalla(div));
         });
 
-        btnAgregar.addEventListener('click', async () => {
+        if (btnAgregar) btnAgregar.addEventListener('click', async () => {
             if (!tallaSeleccionada) {
                 carritoFeedback.textContent = '⚠️ Selecciona una talla primero.';
                 carritoFeedback.style.color = '#c62828';
@@ -401,6 +414,57 @@
                 btnAgregar.textContent = '🛒 Agregar a la orden';
             }
         });
+
+        // --- Invitado: reservar por WhatsApp (sorteo de tienda) ---
+        const btnWhatsapp = document.getElementById('btn-whatsapp');
+        if (btnWhatsapp) {
+            const TIENDAS_POR_TALLA = JSON.parse(
+                (document.getElementById('tiendas-por-talla-data') || {}).textContent || '{}'
+            );
+            const PROD = JSON.parse(
+                (document.getElementById('producto-wpp-data') || {}).textContent || '{}'
+            );
+
+            btnWhatsapp.addEventListener('click', () => {
+                if (!tallaSeleccionada) {
+                    carritoFeedback.textContent = '⚠️ Selecciona una talla primero.';
+                    carritoFeedback.style.color = '#c62828';
+                    return;
+                }
+
+                const tiendas = TIENDAS_POR_TALLA[tallaSeleccionada] || [];
+                if (!tiendas.length) {
+                    carritoFeedback.textContent = '❌ No hay una tienda con asesor disponible para esta talla.';
+                    carritoFeedback.style.color = '#c62828';
+                    return;
+                }
+
+                // Sorteo aleatorio entre las tiendas que tienen esa talla en stock.
+                const elegida = tiendas[Math.floor(Math.random() * tiendas.length)];
+                const numero = String(elegida.numero || '').replace(/\D/g, '');
+                if (!numero) {
+                    carritoFeedback.textContent = '❌ La tienda asignada no tiene número registrado.';
+                    carritoFeedback.style.color = '#c62828';
+                    return;
+                }
+
+                const tallaCm = divSeleccionado ? (divSeleccionado.dataset.tallaCm || '') : '';
+                const tallaUsco = divSeleccionado ? (divSeleccionado.dataset.tallaUsco || '') : '';
+                const lineas = [
+                    'Hola, estoy interesado en este producto del catálogo MASTER CLICK:',
+                    '',
+                    '• Producto: ' + (PROD.nombre || ''),
+                    '• Referencia: ' + (PROD.referencia || ''),
+                    '• Talla: ' + (tallaUsco ? tallaUsco + ' (US/CO)' : tallaSeleccionada) + (tallaCm ? ' / ' + tallaCm + ' (CM)' : ''),
+                    '• Cantidad: ' + cantidad,
+                    '• Ciudad: ' + (PROD.ciudad || ''),
+                    '',
+                    '¿Me pueden ayudar con la disponibilidad?'
+                ];
+                const url = 'https://wa.me/' + numero + '?text=' + encodeURIComponent(lineas.join('\n'));
+                window.open(url, '_blank');
+            });
+        }
     })();
 </script>
 {% endblock %}

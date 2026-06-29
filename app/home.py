@@ -1,4 +1,5 @@
 import os
+import re
 import time
 
 from fastapi import APIRouter, Request, HTTPException
@@ -61,6 +62,11 @@ _DATA_COLUMN_MAP = {
 }
 
 
+def _limpiar_numero(valor) -> str:
+    """Deja solo los dígitos de un número (formato apto para enlaces wa.me)."""
+    return re.sub(r"\D", "", str(valor or ""))
+
+
 def load_data():
     """
     Lee la tabla `data` de Supabase y la devuelve como DataFrame con los
@@ -100,6 +106,19 @@ def load_data():
         df['Edad'] = df['Edad'].fillna('Todas').astype(str)
         df['Talla'] = df['Talla'].fillna('N/A').astype(str)
         df['nombre'] = df['nombre'].fillna('Sin Nombre').astype(str)
+
+        # Número de WhatsApp por tienda (directorio_tiendas) → columna en memoria.
+        # Permite, en la página de producto, enrutar la consulta de un invitado a
+        # una tienda concreta que tenga el artículo (ver `detalle_producto`).
+        try:
+            numeros_tienda = db.obtener_directorio_tiendas()
+        except Exception as e:
+            print(f"⚠️  No se pudo cargar directorio_tiendas: {e}")
+            numeros_tienda = {}
+        if 'Tienda' in df.columns:
+            df['NumeroTienda'] = df['Tienda'].astype(str).str.strip().map(
+                lambda t: numeros_tienda.get(t, "")
+            )
 
         df = df.fillna("")
         return df
@@ -464,6 +483,37 @@ async def detalle_producto(request: Request, referencia: str):
                 "stock": int(r.get("Inventario", 0) or 0),
             })
 
+    # Para el invitado (sin cuenta): por cada talla, las tiendas de su ciudad
+    # que tienen esa talla EN STOCK y con número de WhatsApp registrado. El
+    # cliente sortea una al azar al pulsar "Reservar por WhatsApp".
+    tiendas_por_talla = {}
+    if not master and {'Talla', 'Tienda', 'Inventario'}.issubset(variantes.columns):
+        numeros = {}
+        if 'NumeroTienda' in variantes.columns:
+            for r in variantes[['Tienda', 'NumeroTienda']].to_dict(orient="records"):
+                t = str(r.get('Tienda', '')).strip()
+                if t and t not in numeros:
+                    numeros[t] = _limpiar_numero(r.get('NumeroTienda'))
+        agrup_t = variantes.groupby(['Talla', 'Tienda'], sort=False)['Inventario'].sum().reset_index()
+        for r in agrup_t.to_dict(orient="records"):
+            stock = int(r.get('Inventario', 0) or 0)
+            if stock <= 0:
+                continue
+            tienda = str(r.get('Tienda', '')).strip()
+            numero = numeros.get(tienda, "")
+            if not numero:
+                # Tienda sin número registrado en directorio_tiendas → no se
+                # puede enrutar la consulta hacia ella; se omite del sorteo.
+                continue
+            tiendas_por_talla.setdefault(str(r.get('Talla', '')), []).append({
+                "tienda": tienda,
+                "numero": numero,
+                "stock": stock,
+            })
+
+    # Invitado = sin cuenta en sesión (solo llegó aquí eligiendo ciudad).
+    es_invitado = not request.session.get("user")
+
     filtros = get_filtros_completos(df)
 
     return templates.TemplateResponse(request, "info.html", {
@@ -473,6 +523,8 @@ async def detalle_producto(request: Request, referencia: str):
         "ciudad_usuario": ciudad_usuario,
         "es_master": master,
         "ubicaciones": ubicaciones,
+        "tiendas_por_talla": tiendas_por_talla,
+        "es_invitado": es_invitado,
     })
 
 

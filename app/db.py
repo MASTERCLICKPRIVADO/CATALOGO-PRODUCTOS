@@ -102,6 +102,25 @@ def obtener_referido(codigo):
             return cur.fetchone()
 
 
+def obtener_directorio_tiendas() -> dict:
+    """
+    Devuelve {tienda: celular} desde `directorio_tiendas`.
+
+    Se usa para enrutar la consulta por WhatsApp de un usuario invitado a una
+    tienda concreta (ver app/home.py `detalle_producto`). La clave es el nombre
+    de la tienda tal como aparece en `data.tienda` (normalizada con strip).
+    """
+    out = {}
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT tienda, celular FROM directorio_tiendas")
+            for r in cur.fetchall():
+                t = str(r.get("tienda") or "").strip()
+                if t:
+                    out[t] = str(r.get("celular") or "").strip()
+    return out
+
+
 def actualizar_referido_y_ciudad(usuario, codigo_referido, ciudad):
     """
     Sobreescribe `codigo_referido` y `ciudad` del usuario en la BD.
