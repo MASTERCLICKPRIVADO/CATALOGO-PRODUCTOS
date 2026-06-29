@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.sql import SQL, Identifier
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -547,4 +548,44 @@ def obtener_referencias_excluidas(id_promocion=None):
                 cur.execute(
                     "SELECT article_id, campaign_name FROM excluidos"
                 )
+            return cur.fetchall()
+
+
+# ----------------------- POWER BI (REPORTING) -----------------------
+
+# Whitelist de tablas exportables a Power BI con su columna de orden. El
+# nombre de tabla nunca viene del request (siempre de esta constante), así
+# que es seguro componerlo como identificador SQL con `Identifier`.
+POWERBI_TABLES = {
+    "carrito": "id",
+    "data": "id",
+    "directorio_empleados": "codigo",
+    "excluidos": "article_id",
+    "promociones": "id_promocion",
+    "reservas": "id",
+    "usuarios": "usuario",
+}
+
+
+def fetch_table_rows(table: str, offset: int = 0, limit: int = None):
+    """
+    Devuelve todas las filas de `table` (debe estar en POWERBI_TABLES),
+    ordenadas por su columna natural. Si `limit` es None trae todo;
+    si no, aplica LIMIT/OFFSET para paginación.
+    """
+    order_col = POWERBI_TABLES[table]
+    query = SQL("SELECT * FROM {table} ORDER BY {order_col}").format(
+        table=Identifier(table), order_col=Identifier(order_col)
+    )
+    params = ()
+    if limit is not None:
+        query = SQL("{base} LIMIT %s OFFSET %s").format(base=query)
+        params = (int(limit), int(offset))
+    elif offset:
+        query = SQL("{base} OFFSET %s").format(base=query)
+        params = (int(offset),)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
             return cur.fetchall()

@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
-from app import home, auth, cart, db
+from app import home, auth, cart, powerbi, db
 import re
 
 
@@ -36,7 +36,9 @@ def create_app():
     # Middleware de Autenticación
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        public_paths = ["/login", "/registro", "/static"]
+        # /api/powerbi no usa sesión: se autentica con X-API-Key dentro del
+        # propio router (ver app/powerbi.py).
+        public_paths = ["/login", "/registro", "/static", "/api/powerbi"]
         path = request.url.path
         is_public = any(path.startswith(p) for p in public_paths)
 
@@ -68,6 +70,7 @@ def create_app():
     app.include_router(home.router)
     app.include_router(auth.router)
     app.include_router(cart.router)
+    app.include_router(powerbi.router)
 
     # Plantillas y filtros
     templates = Jinja2Templates(directory="templates")
