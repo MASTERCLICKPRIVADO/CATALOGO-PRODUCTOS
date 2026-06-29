@@ -68,11 +68,11 @@ def _render_login(request: Request, *, error: str = None, form: dict = None):
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_get(request: Request):
-    # Al volver al login (p.ej. botón "Cambiar de ciudad" del navbar)
-    # descartamos la ciudad de invitado elegida antes. Así el invitado debe
-    # elegir ciudad de nuevo y no puede saltarse la selección navegando
-    # directo a "/" ni con el logo MASTER CLICK (que apunta a "/").
-    request.session.pop("guest_city", None)
+    # OJO: NO borrar `guest_city` aquí. Un GET incidental a /login (p.ej. el
+    # redirect automático de /favicon.ico, o un prefetch del navegador)
+    # tumbaría la navegación del invitado. El descarte de ciudad se hace en
+    # la ruta explícita /cambiar-ciudad (ver app/home.py), que es la que usa
+    # el botón "Cambiar de ciudad" del navbar.
     return _render_login(request)
 
 

@@ -242,6 +242,19 @@ async def seleccionar_ciudad_invitado(request: Request, ciudad: str = ""):
     return RedirectResponse(url="/", status_code=303)
 
 
+@router.get("/cambiar-ciudad")
+async def cambiar_ciudad_invitado(request: Request):
+    """
+    Invitado: descarta la ciudad elegida y vuelve al login para escoger otra.
+    Lo usa el botón "Cambiar de ciudad" del navbar. Se hace en una ruta
+    EXPLÍCITA (no dentro de /login) para que un GET incidental a /login
+    —como el redirect automático de /favicon.ico o un prefetch— no borre la
+    ciudad y rompa la navegación del invitado.
+    """
+    request.session.pop("guest_city", None)
+    return RedirectResponse(url="/login", status_code=303)
+
+
 @router.get("/", response_class=HTMLResponse)
 async def ver_catalogo(request: Request, page: int = 1, orden_dcto: str = ""):
     templates = request.app.state.templates

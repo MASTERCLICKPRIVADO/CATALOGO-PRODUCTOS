@@ -43,6 +43,7 @@ def create_app():
         #    /catalogo es lo que GUARDA la ciudad del invitado en sesión.
         always_public = [
             "/login", "/registro", "/static", "/api/powerbi", "/catalogo",
+            "/cambiar-ciudad", "/favicon.ico",
         ]
         # 2) Rutas de catálogo de "solo lectura": un invitado puede verlas,
         #    pero SOLO si ya eligió ciudad en la tarjeta "Catálogo" del login
