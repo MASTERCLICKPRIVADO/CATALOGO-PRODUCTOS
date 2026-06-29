@@ -99,19 +99,16 @@ async def login_post(
 
     # Usuario master: NO requiere código de referido. Ve TODO el inventario
     # (todas las ciudades), así que puede dejar el campo en blanco y entrar.
+    # El campo "Código de referido" de este formulario se IGNORA por completo
+    # para master: nunca cambia su ciudad ni se guarda en `usuarios` (queda
+    # NULL). El código real de vendedor se pide en el formulario de reserva
+    # y se guarda directamente en `reservas_tiendas` (ver app/cart.py).
     if str(user.get("permisos") or "").strip().lower() == "master":
         ciudad = str(user.get("ciudad") or "").strip()
-        # Si por alguna razón el master sí ingresó un código válido, respetamos
-        # la ciudad de ese código (no es obligatorio).
-        if cod:
-            referido = db.obtener_referido(cod)
-            if referido and str(referido.get("ciudad") or "").strip():
-                ciudad = str(referido.get("ciudad") or "").strip()
-                db.actualizar_referido_y_ciudad(user["usuario"], cod, ciudad)
 
         request.session["user"] = user["usuario"]
         request.session["city"] = ciudad
-        request.session["referral_code"] = cod
+        request.session["referral_code"] = ""
         request.session["permisos"] = "master"
         request.session["show_promo"] = True
         request.session["fresh_login"] = True

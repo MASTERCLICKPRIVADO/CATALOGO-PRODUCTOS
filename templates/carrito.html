@@ -194,6 +194,13 @@
                             </label>
                         </div>
 
+                        {% if es_master %}
+                        <label class="field">Código vendedor
+                            <input type="text" name="codigo_vendedor" required
+                                   placeholder="Código del vendedor" style="text-transform: uppercase;">
+                        </label>
+                        {% endif %}
+
                         <label class="reserva-chk-row">
                             <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required>
                             <span>

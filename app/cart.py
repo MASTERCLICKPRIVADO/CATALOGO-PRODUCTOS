@@ -291,6 +291,7 @@ async def ver_carrito(request: Request):
         "total": resumen["total"],
         "ahorro": resumen["ahorro"],
         "dcto_promocional": resumen["dcto_promocional"],
+        "es_master": home.es_master(request),
     })
 
 
@@ -328,6 +329,7 @@ async def reservar_carrito(
     direccion: str = Form(...),
     ciudad: str = Form(...),
     acepta_tratamiento: str = Form(""),
+    codigo_vendedor: str = Form(""),
 ):
     """
     Confirma la reserva del carrito: valida los datos del cliente y el
@@ -338,6 +340,19 @@ async def reservar_carrito(
     usuario = request.session.get("user")
     if not usuario:
         return JSONResponse({"ok": False, "mensaje": "Debes iniciar sesión."}, status_code=401)
+
+    es_master = home.es_master(request)
+
+    # Los usuarios master (tiendas) reservan a nombre de un cliente pero
+    # deben identificar qué vendedor hizo la venta. Este código NO se valida
+    # contra directorio_empleados (texto libre) y es obligatorio solo para
+    # master; se guarda en reservas_tiendas.codigo_referido.
+    codigo_vendedor = (codigo_vendedor or "").strip()
+    if es_master and not codigo_vendedor:
+        return JSONResponse({
+            "ok": False,
+            "mensaje": "Debes ingresar el código de vendedor para reservar.",
+        }, status_code=400)
 
     # Consentimiento de tratamiento de datos (obligatorio)
     if str(acepta_tratamiento).strip().lower() not in ("on", "true", "1", "yes", "si"):
@@ -419,17 +434,23 @@ async def reservar_carrito(
         items_agrupados[key]["cantidad"] += int(it.get("cantidad", 1) or 1)
     items_reserva = list(items_agrupados.values())
 
-    # Código de referido: lo tomamos de la sesión (lo seteamos en login/registro).
-    # Fallback: leerlo desde la tabla `usuarios` por si la sesión es antigua y
-    # no tiene el campo cacheado.
-    codigo_referido = (request.session.get("referral_code") or "").strip()
-    if not codigo_referido:
-        u = db.obtener_usuario(usuario) or {}
-        codigo_referido = str(u.get("codigo_referido") or "").strip()
+    if es_master:
+        # Para master, el código guardado es el del vendedor tipeado en este
+        # formulario (no el de su sesión/perfil, que se ignora por diseño).
+        codigo_referido = codigo_vendedor
+    else:
+        # Código de referido: lo tomamos de la sesión (lo seteamos en login/registro).
+        # Fallback: leerlo desde la tabla `usuarios` por si la sesión es antigua y
+        # no tiene el campo cacheado.
+        codigo_referido = (request.session.get("referral_code") or "").strip()
+        if not codigo_referido:
+            u = db.obtener_usuario(usuario) or {}
+            codigo_referido = str(u.get("codigo_referido") or "").strip()
 
     reserva_id = db.guardar_reserva(
         usuario, datos_cliente, items_reserva,
         codigo_referido=codigo_referido,
+        es_master=es_master,
     )
 
     # Descontar inventario en disco y en memoria

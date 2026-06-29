@@ -373,15 +373,36 @@ def vaciar_carrito(usuario):
 
 # ----------------------- RESERVAS -----------------------
 
+# Usuarios sin permiso master (clientes/family) -> reservas_family.
+# Usuarios con permiso master (tiendas) -> reservas_tiendas.
+# Mismas columnas en ambas; comparten `reservas_reserva_id_seq` para que
+# el número de reserva sea único sin importar en cuál tabla quede.
+_RESERVAS_TABLAS = ("reservas_family", "reservas_tiendas")
+
+
 def guardar_reserva(usuario, datos_cliente: dict, items: list,
-                    codigo_referido: str = "") -> int:
+                    codigo_referido: str = "", es_master: bool = False) -> int:
     """
-    Persiste una reserva en `reservas`: una fila por item, todas comparten
-    el mismo `reserva_id` (tomado de la secuencia `reservas_reserva_id_seq`).
+    Persiste una reserva: una fila por item, todas comparten el mismo
+    `reserva_id` (tomado de la secuencia `reservas_reserva_id_seq`).
+
+    Va a `reservas_tiendas` si `es_master` es True, o a `reservas_family`
+    en caso contrario.
 
     El `codigo_referido` se guarda en cada fila (artículo) para poder
     atribuir cada reserva al empleado/promotor que refirió al cliente.
     """
+    tabla = "reservas_tiendas" if es_master else "reservas_family"
+    insert = SQL(
+        """INSERT INTO {tabla}
+               (reserva_id, fecha, usuario, nombre, apellido, cedula,
+                correo, celular, direccion, ciudad_envio,
+                referencia, talla, ciudad_item, nombre_producto,
+                precio_unitario, cantidad, subtotal, codigo_referido)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   %s, %s, %s, %s, %s, %s, %s, %s)"""
+    ).format(tabla=Identifier(tabla))
+
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT nextval('reservas_reserva_id_seq') AS rid")
@@ -395,13 +416,7 @@ def guardar_reserva(usuario, datos_cliente: dict, items: list,
                 cantidad = int(it.get("cantidad", 1) or 1)
                 precio_unit = int(it.get("precio_unitario", 0) or 0)
                 cur.execute(
-                    """INSERT INTO reservas
-                           (reserva_id, fecha, usuario, nombre, apellido, cedula,
-                            correo, celular, direccion, ciudad_envio,
-                            referencia, talla, ciudad_item, nombre_producto,
-                            precio_unitario, cantidad, subtotal, codigo_referido)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                               %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    insert,
                     (
                         reserva_id,
                         fecha_reserva,
@@ -435,35 +450,36 @@ def obtener_reserva(reserva_id, usuario=None):
         "reserva_id", "datos_cliente" {nombre, apellido, cedula, correo,
         celular, direccion, ciudad_envio}, "items" [{...}], "total".
     }
+    Busca en `reservas_family` y `reservas_tiendas` (en ese orden): como
+    `reserva_id` es único entre ambas, a lo sumo una la contiene.
     Si se pasa `usuario`, restringe la búsqueda a sus propias reservas
     (defensa contra que un usuario descargue el comprobante de otro).
     Devuelve None si no existe o no le pertenece.
     """
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            if usuario is not None:
-                cur.execute(
-                    """SELECT reserva_id, fecha, usuario, nombre, apellido, cedula,
-                              correo, celular, direccion, ciudad_envio,
-                              referencia, talla, ciudad_item, nombre_producto,
-                              precio_unitario, cantidad, subtotal, codigo_referido
-                         FROM reservas
-                        WHERE reserva_id = %s AND usuario = %s
-                        ORDER BY id""",
-                    (int(reserva_id), str(usuario)),
-                )
-            else:
-                cur.execute(
-                    """SELECT reserva_id, fecha, usuario, nombre, apellido, cedula,
-                              correo, celular, direccion, ciudad_envio,
-                              referencia, talla, ciudad_item, nombre_producto,
-                              precio_unitario, cantidad, subtotal, codigo_referido
-                         FROM reservas
-                        WHERE reserva_id = %s
-                        ORDER BY id""",
-                    (int(reserva_id),),
-                )
-            rows = cur.fetchall()
+    columnas = """reserva_id, fecha, usuario, nombre, apellido, cedula,
+                  correo, celular, direccion, ciudad_envio,
+                  referencia, talla, ciudad_item, nombre_producto,
+                  precio_unitario, cantidad, subtotal, codigo_referido"""
+
+    rows = []
+    for tabla in _RESERVAS_TABLAS:
+        if usuario is not None:
+            query = SQL(
+                f"SELECT {columnas} FROM {{tabla}} WHERE reserva_id = %s AND usuario = %s ORDER BY id"
+            ).format(tabla=Identifier(tabla))
+            params = (int(reserva_id), str(usuario))
+        else:
+            query = SQL(
+                f"SELECT {columnas} FROM {{tabla}} WHERE reserva_id = %s ORDER BY id"
+            ).format(tabla=Identifier(tabla))
+            params = (int(reserva_id),)
+
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+        if rows:
+            break
 
     if not rows:
         return None
@@ -562,7 +578,8 @@ POWERBI_TABLES = {
     "directorio_empleados": "codigo",
     "excluidos": "article_id",
     "promociones": "id_promocion",
-    "reservas": "id",
+    "reservas_family": "id",
+    "reservas_tiendas": "id",
     "usuarios": "usuario",
 }
 

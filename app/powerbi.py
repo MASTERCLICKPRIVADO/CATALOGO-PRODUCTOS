@@ -105,16 +105,31 @@ async def powerbi_promociones(offset: int = 0, limit: Optional[int] = None):
 
 
 @router.get(
-    "/reservas",
-    summary="Listado completo de reservas",
+    "/reservas_family",
+    summary="Listado completo de reservas de clientes (family)",
     description=(
-        "Devuelve todas las reservas registradas (una fila por item reservado), en JSON plano. "
+        "Devuelve todas las reservas hechas por usuarios SIN permiso master "
+        "(una fila por item reservado), en JSON plano. "
         "Soporta paginación opcional con `?offset=&limit=`; sin `limit` trae todo."
     ),
     dependencies=[Depends(verify_powerbi_api_key)],
 )
-async def powerbi_reservas(offset: int = 0, limit: Optional[int] = None):
-    return db.fetch_table_rows("reservas", offset=offset, limit=limit)
+async def powerbi_reservas_family(offset: int = 0, limit: Optional[int] = None):
+    return db.fetch_table_rows("reservas_family", offset=offset, limit=limit)
+
+
+@router.get(
+    "/reservas_tiendas",
+    summary="Listado completo de reservas de tiendas (master)",
+    description=(
+        "Devuelve todas las reservas hechas por usuarios CON permiso master "
+        "(una fila por item reservado), en JSON plano. "
+        "Soporta paginación opcional con `?offset=&limit=`; sin `limit` trae todo."
+    ),
+    dependencies=[Depends(verify_powerbi_api_key)],
+)
+async def powerbi_reservas_tiendas(offset: int = 0, limit: Optional[int] = None):
+    return db.fetch_table_rows("reservas_tiendas", offset=offset, limit=limit)
 
 
 @router.get(
