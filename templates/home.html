@@ -229,9 +229,13 @@
 
         </form>
 
+        {# La promoción solo aplica a usuarios con cuenta. Un invitado que solo
+           eligió ciudad no debe ver el botón ni el modal de promoción. #}
+        {% if request.session.user %}
         <button type="button" id="ver-promocion-btn" class="filter-select" style="margin-top: 6px; text-align: center; background: #8a8f64; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border: none; height: 34px; font-size: 13px; cursor: pointer;">
             Ver Promoción
         </button>
+        {% endif %}
     </div>
 {% endblock %}
 
