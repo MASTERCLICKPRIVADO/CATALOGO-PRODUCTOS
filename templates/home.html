@@ -69,24 +69,6 @@
                 <input type="hidden" name="genero" class="filter-hidden-input" value="{{ sel_gen or '' }}">
             </div>
 
-            <label style="font-weight: bold; font-size: 12px; margin-bottom: 0;">Deporte</label>
-            <div class="custom-filter-dropdown" style="position: relative; width: 100%;">
-                <div class="filter-trigger filter-select" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                    <span>{{ sel_dep or 'Todos los Deportes' }}</span>
-                    <span style="font-size: 10px; color: #8a8f64;">▼</span>
-                </div>
-                <div class="filter-options-wrapper" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid rgba(138, 143, 100, 0.3); border-radius: 10px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 5px; max-height: 250px; flex-direction: column;">
-                    <input type="text" class="filter-search-input filter-select" placeholder="Buscar deporte..." style="margin-bottom: 5px; height: 30px; font-size: 12px; padding: 5px;">
-                    <div class="filter-options-list" style="overflow-y: auto; flex: 1;">
-                        <div class="filter-option-item" data-value="" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">Todos los Deportes</div>
-                        {% for dep in filtros.deportes %}
-                            <div class="filter-option-item" data-value="{{ dep }}" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px; {% if sel_dep == dep %}background: #8a8f64; color: white;{% endif %}">{{ dep }}</div>
-                        {% endfor %}
-                    </div>
-                </div>
-                <input type="hidden" name="deporte" class="filter-hidden-input" value="{{ sel_dep or '' }}">
-            </div>
-
             <label style="font-weight: bold; font-size: 12px; margin-bottom: 0;">Edad</label>
             <div class="custom-filter-dropdown" style="position: relative; width: 100%;">
                 <div class="filter-trigger filter-select" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
@@ -103,6 +85,24 @@
                     </div>
                 </div>
                 <input type="hidden" name="edad" class="filter-hidden-input" value="{{ sel_edad or '' }}">
+            </div>
+
+            <label style="font-weight: bold; font-size: 12px; margin-bottom: 0;">Deporte</label>
+            <div class="custom-filter-dropdown" style="position: relative; width: 100%;">
+                <div class="filter-trigger filter-select" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <span>{{ sel_dep or 'Todos los Deportes' }}</span>
+                    <span style="font-size: 10px; color: #8a8f64;">▼</span>
+                </div>
+                <div class="filter-options-wrapper" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid rgba(138, 143, 100, 0.3); border-radius: 10px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 5px; max-height: 250px; flex-direction: column;">
+                    <input type="text" class="filter-search-input filter-select" placeholder="Buscar deporte..." style="margin-bottom: 5px; height: 30px; font-size: 12px; padding: 5px;">
+                    <div class="filter-options-list" style="overflow-y: auto; flex: 1;">
+                        <div class="filter-option-item" data-value="" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">Todos los Deportes</div>
+                        {% for dep in filtros.deportes %}
+                            <div class="filter-option-item" data-value="{{ dep }}" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px; {% if sel_dep == dep %}background: #8a8f64; color: white;{% endif %}">{{ dep }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <input type="hidden" name="deporte" class="filter-hidden-input" value="{{ sel_dep or '' }}">
             </div>
 
             <label style="font-weight: bold; font-size: 12px; margin-bottom: 0;">Descuento</label>
