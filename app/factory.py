@@ -36,13 +36,33 @@ def create_app():
     # Middleware de Autenticación
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        # /api/powerbi no usa sesión: se autentica con X-API-Key dentro del
-        # propio router (ver app/powerbi.py).
-        public_paths = ["/login", "/registro", "/static", "/api/powerbi"]
         path = request.url.path
-        is_public = any(path.startswith(p) for p in public_paths)
 
-        if not is_public and "user" not in request.session:
+        # 1) Rutas SIEMPRE públicas (no requieren ni sesión ni ciudad).
+        #    /api/powerbi se autentica con X-API-Key dentro de su router.
+        #    /catalogo es lo que GUARDA la ciudad del invitado en sesión.
+        always_public = [
+            "/login", "/registro", "/static", "/api/powerbi", "/catalogo",
+        ]
+        # 2) Rutas de catálogo de "solo lectura": un invitado puede verlas,
+        #    pero SOLO si ya eligió ciudad en la tarjeta "Catálogo" del login
+        #    (o está logueado). Sin ninguna de las dos → vuelve a /login para
+        #    que elija primero. "/" se compara exacto: con startswith() TODA
+        #    ruta empieza con "/" y dejaría la app entera sin protección.
+        guest_catalog = [
+            "/buscar", "/api/productos", "/api/sugerencias", "/producto",
+        ]
+
+        is_always_public = any(path.startswith(p) for p in always_public)
+        is_catalog = path == "/" or any(path.startswith(p) for p in guest_catalog)
+
+        if is_always_public:
+            pass  # acceso libre
+        elif is_catalog:
+            # Invitado debe haber elegido ciudad; logueado siempre pasa.
+            if "user" not in request.session and not request.session.get("guest_city"):
+                return RedirectResponse(url="/login")
+        elif "user" not in request.session:
             return RedirectResponse(url="/login")
 
         response = await call_next(request)

@@ -2,7 +2,7 @@ import os
 import time
 
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.encoders import jsonable_encoder
 import pandas as pd
 
@@ -131,10 +131,13 @@ def aplicar_scope_ciudad(request, df):
     Aplica el filtro de ciudad SALVO que el usuario sea master.
     - Usuario normal → solo el inventario de la ciudad de su sesión.
     - Usuario master → el inventario completo, sin filtrar por ciudad.
+    - Invitado (sin cuenta) → la ciudad que eligió en la tarjeta "Catálogo"
+      del login (`guest_city`), si la eligió.
     """
     if es_master(request):
         return df
-    return filtrar_por_ciudad(df, request.session.get("city", ""))
+    ciudad = request.session.get("city") or request.session.get("guest_city") or ""
+    return filtrar_por_ciudad(df, ciudad)
 
 
 def aplicar_orden_dcto(df, orden):
@@ -205,6 +208,19 @@ def get_filtros_completos(df, q=None, tipo_producto=None, categoria=None,
         "edades":         _valores_unicos(filtrar(df, 'edad'),          "Edad"),
         "tallas":         _valores_unicos(filtrar(df, 'talla'),         "TallaUSCO"),
     }
+
+
+@router.get("/catalogo")
+async def seleccionar_ciudad_invitado(request: Request, ciudad: str = ""):
+    """
+    Acceso de invitado (sin cuenta): guarda en sesión la ciudad elegida en
+    la tarjeta "Catálogo" del login y redirige al catálogo filtrado por
+    esa ciudad. No requiere login (ver `public_paths` en app/factory.py).
+    """
+    ciudad = (ciudad or "").strip()
+    if ciudad:
+        request.session["guest_city"] = ciudad
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -407,8 +423,9 @@ async def detalle_producto(request: Request, referencia: str):
     templates = request.app.state.templates
     df = request.app.state.df  # ✅ Desde memoria
 
-    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades)
-    ciudad_usuario = request.session.get("city", "")
+    # Filtrar por ciudad del usuario logueado (el master ve todas las ciudades).
+    # Para un invitado sin cuenta, cae a la ciudad elegida en el login.
+    ciudad_usuario = request.session.get("city") or request.session.get("guest_city") or ""
     master = es_master(request)
     df = aplicar_scope_ciudad(request, df)
 

@@ -42,18 +42,37 @@ def _verify_password(plain: str, stored: str) -> bool:
     return stored_str == str(plain)
 
 
+def _ciudades_disponibles(request: Request) -> list:
+    """
+    Ciudades únicas con catálogo cargado en memoria, para el selector de
+    la tarjeta "Catálogo" (invitado, sin cuenta) del login.
+    """
+    df = getattr(request.app.state, "df", None)
+    if df is None or df.empty or "Ciudad" not in df.columns:
+        return []
+    return sorted({
+        str(c).strip() for c in df["Ciudad"].unique()
+        if str(c).strip() and str(c).strip().lower() != "nan"
+    })
+
+
 def _render_login(request: Request, *, error: str = None, form: dict = None):
     """Helper para renderizar login.html re-inyectando los valores ya tipeados."""
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"error": error, "form": form or {}},
+        {"error": error, "form": form or {}, "ciudades": _ciudades_disponibles(request)},
     )
 
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_get(request: Request):
+    # Al volver al login (p.ej. botón "Cambiar de ciudad" del navbar)
+    # descartamos la ciudad de invitado elegida antes. Así el invitado debe
+    # elegir ciudad de nuevo y no puede saltarse la selección navegando
+    # directo a "/" ni con el logo MASTER CLICK (que apunta a "/").
+    request.session.pop("guest_city", None)
     return _render_login(request)
 
 

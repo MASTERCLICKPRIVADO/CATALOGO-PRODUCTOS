@@ -3,7 +3,38 @@
 {% block title %} Iniciar Sesión - MasterSeries{% endblock %}
 
 {% block content %}
-<div class="contenedor" style="display: flex; justify-content: center; align-items: center; flex: 1; padding: 20px 15px;">
+<div class="contenedor" style="display: flex; justify-content: center; align-items: flex-start; flex: 1; flex-wrap: wrap; gap: 24px; padding: 20px 15px;">
+
+    <!-- Tarjeta izquierda: ver el catálogo sin cuenta -->
+    <div class="carta" style="max-width: 380px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
+        <h2 style="margin-bottom: 20px;">Catálogo</h2>
+        <p style="color: #777; font-size: 14px; margin-bottom: 20px;">
+            Mira los productos disponibles sin necesidad de crear una cuenta.
+        </p>
+
+        <form action="/catalogo" method="get">
+            <div style="margin-bottom: 20px;">
+                <label for="ciudad-invitado" style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-weight: 600;">
+                    Seleccione la ciudad más cercana
+                    <span title="La ciudad seleccionada determina el costo de envío."
+                          style="display: inline-flex; align-items: center; justify-content: center;
+                                 width: 14px; height: 14px; border-radius: 50%;
+                                 font-size: 10px; line-height: 1; color: #bbb;
+                                 border: 1px solid #ddd; cursor: help; flex-shrink: 0;">?</span>
+                </label>
+                <select id="ciudad-invitado" name="ciudad" class="filter-select" required>
+                    <option value="" disabled selected>Selecciona una ciudad</option>
+                    {% for c in ciudades %}
+                    <option value="{{ c }}">{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit">Ver</button>
+        </form>
+    </div>
+
+    <!-- Tarjeta derecha: iniciar sesión (sin cambios funcionales) -->
     <div class="carta" style="max-width: 400px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
         <h2 style="margin-bottom: 20px;">Iniciar Sesión</h2>
         
