@@ -399,6 +399,30 @@ def vaciar_carrito(usuario):
 _RESERVAS_TABLAS = ("reservas_family", "reservas_tiendas")
 
 
+def _tienda_de_salida(cur, referencia, talla, ciudad) -> str:
+    """
+    Tienda DESDE LA QUE saldrá el producto de un item (referencia, talla,
+    ciudad): la primera fila de `data` con stock, ordenada por `id`.
+
+    Es exactamente la tienda de la que `descontar_inventario` empieza a restar
+    inventario (misma consulta), así `tienda_salida` coincide con el inventario
+    que realmente se descuenta. El nombre coincide con `directorio_tiendas.tienda`.
+
+    Devuelve "" si no hay ninguna fila con stock para ese item.
+    """
+    cur.execute(
+        """SELECT tienda
+             FROM data
+            WHERE referencia = %s AND talla = %s AND ciudad = %s
+              AND inventario > 0
+            ORDER BY id
+            LIMIT 1""",
+        (str(referencia), str(talla), str(ciudad)),
+    )
+    row = cur.fetchone()
+    return str(row["tienda"]).strip() if row and row.get("tienda") else ""
+
+
 def guardar_reserva(usuario, datos_cliente: dict, items: list,
                     codigo_referido: str = "", es_master: bool = False) -> int:
     """
@@ -410,17 +434,36 @@ def guardar_reserva(usuario, datos_cliente: dict, items: list,
 
     El `codigo_referido` se guarda en cada fila (artículo) para poder
     atribuir cada reserva al empleado/promotor que refirió al cliente.
+
+    En `reservas_tiendas` se guarda además `tienda_salida`: la tienda de la
+    que sale el stock de cada item (ver `_tienda_de_salida`). Esa columna NO
+    existe en `reservas_family`, por lo que el INSERT la incluye solo cuando
+    la reserva cae en `reservas_tiendas`.
     """
     tabla = "reservas_tiendas" if es_master else "reservas_family"
-    insert = SQL(
-        """INSERT INTO {tabla}
-               (reserva_id, fecha, usuario, nombre, apellido, cedula,
-                correo, celular, direccion, ciudad_envio,
-                referencia, talla, ciudad_item, nombre_producto,
-                precio_unitario, cantidad, subtotal, codigo_referido)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                   %s, %s, %s, %s, %s, %s, %s, %s)"""
-    ).format(tabla=Identifier(tabla))
+    incluir_tienda_salida = (tabla == "reservas_tiendas")
+
+    if incluir_tienda_salida:
+        insert = SQL(
+            """INSERT INTO {tabla}
+                   (reserva_id, fecha, usuario, nombre, apellido, cedula,
+                    correo, celular, direccion, ciudad_envio,
+                    referencia, talla, ciudad_item, nombre_producto,
+                    precio_unitario, cantidad, subtotal, codigo_referido,
+                    tienda_salida)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        ).format(tabla=Identifier(tabla))
+    else:
+        insert = SQL(
+            """INSERT INTO {tabla}
+                   (reserva_id, fecha, usuario, nombre, apellido, cedula,
+                    correo, celular, direccion, ciudad_envio,
+                    referencia, talla, ciudad_item, nombre_producto,
+                    precio_unitario, cantidad, subtotal, codigo_referido)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s, %s, %s)"""
+        ).format(tabla=Identifier(tabla))
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
@@ -434,29 +477,40 @@ def guardar_reserva(usuario, datos_cliente: dict, items: list,
             for it in items:
                 cantidad = int(it.get("cantidad", 1) or 1)
                 precio_unit = int(it.get("precio_unitario", 0) or 0)
-                cur.execute(
-                    insert,
-                    (
-                        reserva_id,
-                        fecha_reserva,
-                        str(usuario),
-                        str(datos_cliente.get("nombre", "")),
-                        str(datos_cliente.get("apellido", "")),
-                        str(datos_cliente.get("cedula", "")),
-                        str(datos_cliente.get("correo", "")),
-                        str(datos_cliente.get("celular", "")),
-                        str(datos_cliente.get("direccion", "")),
-                        str(datos_cliente.get("ciudad_envio", "")),
-                        str(it.get("referencia", "")),
-                        str(it.get("talla", "")),
-                        str(it.get("ciudad_item", "")),
-                        str(it.get("nombre_producto", "")),
-                        precio_unit,
-                        cantidad,
-                        precio_unit * cantidad,
-                        str(codigo_referido or "").strip(),
-                    ),
-                )
+                valores = [
+                    reserva_id,
+                    fecha_reserva,
+                    str(usuario),
+                    str(datos_cliente.get("nombre", "")),
+                    str(datos_cliente.get("apellido", "")),
+                    str(datos_cliente.get("cedula", "")),
+                    str(datos_cliente.get("correo", "")),
+                    str(datos_cliente.get("celular", "")),
+                    str(datos_cliente.get("direccion", "")),
+                    str(datos_cliente.get("ciudad_envio", "")),
+                    str(it.get("referencia", "")),
+                    str(it.get("talla", "")),
+                    str(it.get("ciudad_item", "")),
+                    str(it.get("nombre_producto", "")),
+                    precio_unit,
+                    cantidad,
+                    precio_unit * cantidad,
+                    str(codigo_referido or "").strip(),
+                ]
+                if incluir_tienda_salida:
+                    # La tienda de salida se resuelve ANTES de descontar el
+                    # inventario (eso ocurre después en cart.py), así que la
+                    # consulta ve el stock intacto y devuelve la misma primera
+                    # tienda de la que luego se restará.
+                    valores.append(
+                        _tienda_de_salida(
+                            cur,
+                            it.get("referencia", ""),
+                            it.get("talla", ""),
+                            it.get("ciudad_item", ""),
+                        )
+                    )
+                cur.execute(insert, tuple(valores))
         conn.commit()
     return reserva_id
 
