@@ -9,6 +9,35 @@ from app import documentos
 router = APIRouter()
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Lógica de descuentos: vive 100% en app/logicas_descuento.py.
+# Aquí solo la consultamos de forma DEFENSIVA: si ese archivo está comentado,
+# vacío, borrado o llegara a fallar, `_ld_call` devuelve el valor por defecto
+# y el carrito sigue funcionando con normalidad, simplemente SIN aplicar
+# ningún descuento por cantidad.
+# ──────────────────────────────────────────────────────────────────────────
+try:
+    from app import logicas_descuento as _ld
+except Exception:
+    _ld = None
+
+
+def _ld_call(nombre_funcion, por_defecto, *args):
+    """Llama a una función de app/logicas_descuento de forma segura.
+
+    Si el módulo no se pudo importar, la función no existe (la comentaste o
+    borraste) o lanza un error, devuelve `por_defecto`. Así el carrito nunca
+    se rompe por tocar las lógicas de descuento.
+    """
+    funcion = getattr(_ld, nombre_funcion, None)
+    if not callable(funcion):
+        return por_defecto
+    try:
+        return funcion(*args)
+    except Exception:
+        return por_defecto
+
+
 def _to_int(valor):
     """Convierte cualquier representación de precio/dcto a int (acepta '$89.950', '20%', '0.20', etc.)."""
     if valor is None:
@@ -26,14 +55,16 @@ def _to_int(valor):
 
 
 def _dcto_promocional(num_items: int) -> int:
-    """Devuelve el % de descuento promocional según la cantidad total de items en el carrito."""
-    if num_items >= 4:
-        return 40
-    if num_items == 3:
-        return 30
-    if num_items == 2:
-        return 20
-    return 0
+    """% de descuento por cantidad para el carrito.
+
+    Es solo un puente hacia app/logicas_descuento.descuento_por_cantidad:
+    toda la regla (cuántos artículos dan cuánto %) se define ALLÁ. Si esa
+    lógica está apagada o falla, devuelve 0 → el carrito no aplica descuento.
+    """
+    try:
+        return int(_ld_call("descuento_por_cantidad", 0, num_items) or 0)
+    except Exception:
+        return 0
 
 
 def calcular_carrito(items):
@@ -284,6 +315,9 @@ async def ver_carrito(request: Request):
     items = db.obtener_carrito(usuario)
     resumen = calcular_carrito(items)
 
+    # Datos SOLO para la UI de promociones (barra lateral + banner). Salen de
+    # app/logicas_descuento; si el descuento está apagado, `dcto_reglas` llega
+    # como [] y `dcto_siguiente` como None → la plantilla no muestra promos.
     return templates.TemplateResponse(request, "carrito.html", {
         "items": resumen["items"],
         "cantidad": resumen["cantidad"],
@@ -291,6 +325,8 @@ async def ver_carrito(request: Request):
         "total": resumen["total"],
         "ahorro": resumen["ahorro"],
         "dcto_promocional": resumen["dcto_promocional"],
+        "dcto_reglas": _ld_call("reglas_descuento", []),
+        "dcto_siguiente": _ld_call("siguiente_tramo", None, resumen["cantidad"]),
         "es_master": home.es_master(request),
     })
 

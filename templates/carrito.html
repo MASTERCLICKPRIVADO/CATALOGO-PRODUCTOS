@@ -4,12 +4,15 @@
 
 {% block sidebar %}
 <p>Aquí puedes ver los artículos que has agregado a tu Reserva de compras.</p>
+{# Las reglas salen de app/logicas_descuento. Si el descuento está apagado,
+   `dcto_reglas` llega vacío y esta caja no se muestra. #}
+{% if dcto_reglas %}
 <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 12px;">
     <h4 style="color: #8a8f64; margin-bottom: 10px;">Promociones por cantidad</h4>
     <ul style="font-size: 13px; color: #555; padding-left: 18px; line-height: 1.7;">
-        <li>2 artículos → <strong>20%</strong> adicional</li>
-        <li>3 artículos → <strong>30%</strong> adicional</li>
-        <li>4+ artículos → <strong>40%</strong> adicional</li>
+        {% for regla in dcto_reglas %}
+        <li>{{ regla.min }}{% if loop.last %}+{% endif %} artículos → <strong>{{ regla.pct }}%</strong> adicional</li>
+        {% endfor %}
     </ul>
     <p style="font-size: 12px; color: #888; margin-top: 8px;">
         El % adicional se aplica sobre el precio actual de cada prenda
@@ -20,6 +23,7 @@
         en ese caso se mantiene su precio actual.
     </p>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -33,6 +37,10 @@
             {{ cantidad }} artículo{{ 's' if cantidad != 1 else '' }} en tu Orden.
         </p>
 
+        {# Banner de promoción por cantidad. Todo sale de app/logicas_descuento:
+           `dcto_promocional` = % activo ahora, `dcto_siguiente` = próximo tramo
+           mejor. Si el descuento está apagado, ambos quedan vacíos y no se
+           muestra ningún aviso. #}
         {% if dcto_promocional > 0 %}
         <div style="background: linear-gradient(90deg, #8a8f64, #6e7350); color: white;
                     padding: 15px 20px; border-radius: 16px; margin-bottom: 20px;
@@ -43,16 +51,17 @@
                     Aplicado sobre el precio actual por llevar {{ cantidad }} artículos.
                 </div>
             </div>
-            {% if cantidad < 4 %}
+            {% if dcto_siguiente %}
             <div style="font-size: 13px; background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 999px;">
-                {% if cantidad == 2 %}+1 artículo → 30%{% elif cantidad == 3 %}+1 artículo → 40%{% endif %}
+                +{{ dcto_siguiente.faltan }} artículo{{ 's' if dcto_siguiente.faltan != 1 else '' }} → {{ dcto_siguiente.pct }}%
             </div>
             {% endif %}
         </div>
-        {% elif cantidad == 1 %}
+        {% elif cantidad >= 1 and dcto_siguiente %}
         <div style="background: #fff8e1; color: #8a6d00; padding: 12px 20px; border-radius: 16px;
                     margin-bottom: 20px; font-size: 14px;">
-            💡 Agrega otro artículo y obtén <strong>20% adicional</strong> sobre el precio actual.
+            💡 Agrega {{ dcto_siguiente.faltan }} artículo{{ 's' if dcto_siguiente.faltan != 1 else '' }} más y obtén
+            <strong>{{ dcto_siguiente.pct }}% adicional</strong> sobre el precio actual.
         </div>
         {% endif %}
 
@@ -284,14 +293,6 @@
 </section>
 
 <script>
-    function formatCurrency(value) {
-        if (!value && value !== 0) return "";
-        let strVal = String(value).replace('$', '').replace(/\./g, '').replace(',', '').trim();
-        if (isNaN(strVal)) return value;
-        let formatted = new Intl.NumberFormat('de-DE').format(strVal);
-        return `$${formatted}`;
-    }
-
     const msg = document.getElementById('Reserva-msg');
     function mostrarMsg(texto, ok) {
         msg.textContent = texto;
@@ -299,63 +300,9 @@
         setTimeout(() => { msg.textContent = ''; }, 3500);
     }
 
-    function descuentoPromocional(cantidad) {
-        if (cantidad >= 4) return 40;
-        if (cantidad === 3) return 30;
-        if (cantidad === 2) return 20;
-        return 0;
-    }
-
-    function recalcular() {
-        // Misma lógica que `calcular_carrito()` en cart.py:
-        //   precio_final = precio_ahora * (1 - promo/100)   (encadenado)
-        //   dcto_visible = (precio_antes - precio_final) / precio_antes * 100
-        const items = Array.from(document.querySelectorAll('.Reserva-item'));
-        const cantidad = items.length;
-        const promo = descuentoPromocional(cantidad);
-
-        let subtotal = 0;
-        let total = 0;
-
-        items.forEach(div => {
-            let precioAntes = parseInt(div.dataset.precioAntes || '0', 10);
-            let precioAhora = parseInt(div.dataset.precioAhora || '0', 10);
-            const aplicaPromo = div.dataset.aplicaPromo !== '0';
-            if (precioAntes <= 0) precioAntes = precioAhora;
-            if (precioAhora <= 0) precioAhora = precioAntes;
-
-            // Promo efectivo del ítem: si no aplica, queda en 0 (sigue
-            // contando para el tier global pero no recibe el descuento).
-            const promoItem = aplicaPromo ? promo : 0;
-
-            const precioFinal = promoItem > 0
-                ? Math.round(precioAhora * (100 - promoItem) / 100)
-                : precioAhora;
-
-            const dctoVisible = precioAntes > 0
-                ? Math.round((precioAntes - precioFinal) * 100 / precioAntes)
-                : 0;
-
-            subtotal += precioAntes;
-            total += precioFinal;
-
-            const badge = div.querySelector('.dcto-badge');
-            const precioFinalEl = div.querySelector('.precio-final');
-            if (precioFinalEl) precioFinalEl.textContent = formatCurrency(precioFinal);
-            if (badge) {
-                const esPromo = promoItem > 0;
-                badge.textContent = `-${dctoVisible}%${esPromo ? ' (promo)' : ''}`;
-                badge.style.background = esPromo ? '#8a8f64' : '#c62828';
-            }
-        });
-
-        const subtotalEl = document.getElementById('subtotal-Reserva');
-        const ahorroEl = document.getElementById('ahorro-Reserva');
-        const totalEl = document.getElementById('total-Reserva');
-        if (subtotalEl) subtotalEl.textContent = formatCurrency(subtotal);
-        if (ahorroEl) ahorroEl.textContent = '- ' + formatCurrency(subtotal - total);
-        if (totalEl) totalEl.textContent = formatCurrency(total);
-    }
+    // Nota: el cálculo de descuentos NO vive aquí. Lo hace el servidor en
+    // app/cart.py (que consulta app/logicas_descuento.py) y la página se
+    // recarga al agregar/eliminar para mostrar los totales actualizados.
 
     document.querySelectorAll('.btn-eliminar').forEach(btn => {
         btn.addEventListener('click', async () => {
