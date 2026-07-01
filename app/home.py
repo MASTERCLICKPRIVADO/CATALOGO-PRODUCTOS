@@ -12,6 +12,30 @@ from app import db
 router = APIRouter()
 
 
+# Orden "natural" de tallas de letra para mostrar las carpetas del master
+# (XS, S, M, L, XL...) en vez de alfabéticamente (L, M, S, XL).
+_ORDEN_TALLAS = {
+    t: i for i, t in enumerate(
+        ["XXXS", "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "XXXXL"]
+    )
+}
+
+
+def _clave_orden_talla(grupo: dict):
+    """Clave de ordenamiento para las carpetas de talla del master.
+
+    Prioriza el orden de tallas de letra; si la talla es numérica (calzado,
+    edades) ordena por su valor; cualquier otra cae al final alfabéticamente.
+    """
+    etiqueta = (grupo.get("talla_usco") or grupo.get("talla") or "").strip().upper()
+    if etiqueta in _ORDEN_TALLAS:
+        return (0, _ORDEN_TALLAS[etiqueta], etiqueta)
+    try:
+        return (1, float(etiqueta.replace(",", ".")), etiqueta)
+    except ValueError:
+        return (2, 0, etiqueta)
+
+
 def get_promo_image_url() -> str:
     """
     Construye la URL pública del banner de promoción almacenado en Supabase
@@ -481,6 +505,12 @@ async def detalle_producto(request: Request, referencia: str):
     # ciudad y tienda está cada unidad. Cada fila es seleccionable para
     # reservar desde esa ciudad concreta.
     ubicaciones = []
+    # Agrupación "en carpetas": una carpeta por talla, y dentro las tiendas
+    # (ciudad — tienda) que tienen esa talla en stock. Evita la lista larga
+    # de filas repetidas (BCS CACIQUE: L, BCS CACIQUE: M, ...).
+    ubicaciones_por_talla = []
+    # Lista de tiendas distintas (ciudad — tienda) para el filtro desplegable.
+    tiendas_master = []
     if master:
         cols = ['Ciudad', 'Tienda', 'Talla', 'TallaCM', 'TallaUSCO']
         cols = [c for c in cols if c in variantes.columns]
@@ -495,6 +525,33 @@ async def detalle_producto(request: Request, referencia: str):
                 "talla_usco": str(r.get("TallaUSCO", "")),
                 "stock": int(r.get("Inventario", 0) or 0),
             })
+
+        # Construimos las carpetas por talla preservando, dentro de cada una,
+        # el orden por ciudad/tienda que ya trae `ubicaciones`.
+        grupos = {}
+        for u in ubicaciones:
+            g = grupos.get(u["talla"])
+            if g is None:
+                g = {
+                    "talla": u["talla"],
+                    "talla_cm": u["talla_cm"],
+                    "talla_usco": u["talla_usco"],
+                    "stock_total": 0,
+                    "tiendas": [],
+                }
+                grupos[u["talla"]] = g
+            g["tiendas"].append(u)
+            g["stock_total"] += u["stock"]
+        ubicaciones_por_talla = sorted(grupos.values(), key=_clave_orden_talla)
+
+        # Tiendas distintas (ciudad — tienda) para el desplegable de filtro.
+        vistas = set()
+        for u in ubicaciones:
+            etiqueta = f'{u["ciudad"]} — {u["tienda"]}'
+            if etiqueta not in vistas:
+                vistas.add(etiqueta)
+                tiendas_master.append(etiqueta)
+        tiendas_master.sort()
 
     # Para el invitado (sin cuenta): por cada talla, las tiendas de su ciudad
     # que tienen esa talla EN STOCK y con número de WhatsApp registrado. El
@@ -536,6 +593,8 @@ async def detalle_producto(request: Request, referencia: str):
         "ciudad_usuario": ciudad_usuario,
         "es_master": master,
         "ubicaciones": ubicaciones,
+        "ubicaciones_por_talla": ubicaciones_por_talla,
+        "tiendas_master": tiendas_master,
         "tiendas_por_talla": tiendas_por_talla,
         "es_invitado": es_invitado,
     })

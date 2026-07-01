@@ -170,46 +170,167 @@
 
             <!-- Tallas Disponibles -->
             {% if es_master %}
-            <!-- Vista MASTER: desglose por ciudad y tienda. Cada fila es
-                 seleccionable y reserva desde esa ciudad concreta. -->
+            <!-- Vista MASTER: disponibilidad agrupada en "carpetas" por talla.
+                 Cada carpeta se despliega y muestra las tiendas que tienen esa
+                 talla en stock. Cada tienda es seleccionable y reserva desde
+                 esa ciudad concreta. -->
             <div>
                 <h3 style="color: #8a8f64; margin-bottom: 6px;">
                     Disponibilidad por ciudad y tienda
                     <span style="font-size: 13px; color: #777; font-weight: normal;">(todas las sedes)</span>
                 </h3>
                 <p style="font-size: 13px; color: #777; margin-bottom: 12px;">
-                    Selecciona la ubicación desde la que quieres reservar.
+                    Abre una talla y selecciona la ubicación desde la que quieres reservar.
                 </p>
+
+                <!-- Filtros desplegables: por talla y por tienda -->
+                <div id="master-filtros" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <div class="master-dd" data-dd="talla" style="position: relative; flex: 1; min-width: 150px;">
+                        <div class="master-dd-trigger filter-select" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin: 0;">
+                            <span class="master-dd-label">Todas las tallas</span>
+                            <span style="font-size: 10px; color: #8a8f64;">▼</span>
+                        </div>
+                        <div class="master-dd-panel" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid rgba(138,143,100,0.3); border-radius: 10px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 5px; max-height: 220px; overflow-y: auto;">
+                            <div class="master-dd-option" data-value="" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">Todas las tallas</div>
+                            {% for g in ubicaciones_por_talla %}
+                            <div class="master-dd-option" data-value="{{ g.talla }}" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">Talla {{ g.talla_usco or g.talla }}{% if g.talla_cm and g.talla_cm != 'N/A' %} · CM {{ g.talla_cm }}{% endif %}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="master-dd" data-dd="tienda" style="position: relative; flex: 1; min-width: 150px;">
+                        <div class="master-dd-trigger filter-select" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin: 0;">
+                            <span class="master-dd-label">Todas las tiendas</span>
+                            <span style="font-size: 10px; color: #8a8f64;">▼</span>
+                        </div>
+                        <div class="master-dd-panel" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid rgba(138,143,100,0.3); border-radius: 10px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 5px; max-height: 220px; overflow-y: auto;">
+                            <div class="master-dd-option" data-value="" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">Todas las tiendas</div>
+                            {% for tienda in tiendas_master %}
+                            <div class="master-dd-option" data-value="{{ tienda }}" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">{{ tienda }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
                 <div id="tallas-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto;">
-                    {% for u in ubicaciones %}
-                    {% set sin_stock = u.stock <= 0 %}
-                    <div class="talla-opcion"
-                         data-talla="{{ u.talla }}"
-                         data-talla-cm="{{ u.talla_cm }}"
-                         data-talla-usco="{{ u.talla_usco }}"
-                         data-ciudad="{{ u.ciudad }}"
-                         data-tienda="{{ u.tienda }}"
-                         data-stock="{{ u.stock }}"
-                         style="border: 2px solid {% if sin_stock %}#ccc{% else %}#8a8f64{% endif %};
-                                padding: 10px 16px; border-radius: 12px;
-                                display: flex; justify-content: space-between; align-items: center; gap: 12px;
-                                cursor: {% if sin_stock %}not-allowed{% else %}pointer{% endif %};
-                                opacity: {% if sin_stock %}0.5{% else %}1{% endif %};
-                                transition: all 0.15s;">
-                        <div style="text-align: left;">
-                            <span style="display: block; font-weight: bold; font-size: 14px; color: #444;">
-                                📍 {{ u.ciudad }} — {{ u.tienda }}
+                    {% for g in ubicaciones_por_talla %}
+                    <div class="talla-folder" data-talla="{{ g.talla }}">
+                        <div class="folder-header"
+                             style="border: 2px solid #8a8f64; background: rgba(138,143,100,0.08);
+                                    padding: 10px 16px; border-radius: 12px; cursor: pointer;
+                                    display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                            <span style="font-weight: bold; font-size: 15px; color: #5f6442;">
+                                📁 Talla {{ g.talla_usco or g.talla }}{% if g.talla_cm and g.talla_cm != 'N/A' %} <span style="font-weight: normal; font-size: 12px; color: #777;">· CM {{ g.talla_cm }}</span>{% endif %}
                             </span>
-                            <span style="font-size: 12px; color: #777;">
-                                Talla CM: {{ u.talla_cm }} | U.S/CO: {{ u.talla_usco }}
+                            <span style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 12px; color: #777; white-space: nowrap;">{{ g.tiendas|length }} tienda(s) · Stock: {{ g.stock_total }}</span>
+                                <span class="folder-caret" style="font-size: 11px; color: #8a8f64; transition: transform 0.15s;">▼</span>
                             </span>
                         </div>
-                        <span style="font-size: 12px; color: #777; white-space: nowrap;">Stock: <span class="stock-label">{{ u.stock }}</span></span>
+                        <div class="folder-body" style="display: none; flex-direction: column; gap: 6px; padding: 6px 0 2px 0;">
+                            {% for u in g.tiendas %}
+                            {% set sin_stock = u.stock <= 0 %}
+                            <div class="talla-opcion"
+                                 data-talla="{{ u.talla }}"
+                                 data-talla-cm="{{ u.talla_cm }}"
+                                 data-talla-usco="{{ u.talla_usco }}"
+                                 data-ciudad="{{ u.ciudad }}"
+                                 data-tienda="{{ u.tienda }}"
+                                 data-stock="{{ u.stock }}"
+                                 style="border: 2px solid {% if sin_stock %}#ccc{% else %}#8a8f64{% endif %};
+                                        padding: 9px 14px; margin-left: 14px; border-radius: 10px;
+                                        display: flex; justify-content: space-between; align-items: center; gap: 12px;
+                                        cursor: {% if sin_stock %}not-allowed{% else %}pointer{% endif %};
+                                        opacity: {% if sin_stock %}0.5{% else %}1{% endif %};
+                                        transition: all 0.15s;">
+                                <span style="text-align: left; display: block; font-weight: bold; font-size: 13px; color: #444;">
+                                    📍 {{ u.ciudad }} — {{ u.tienda }}
+                                </span>
+                                <span style="font-size: 12px; color: #777; white-space: nowrap;">Stock: <span class="stock-label">{{ u.stock }}</span></span>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
                 <p id="talla-feedback" style="margin-top: 10px; font-size: 14px; color: #777; min-height: 20px;"></p>
             </div>
+
+            <script>
+                (function () {
+                    const container = document.getElementById('tallas-container');
+                    if (!container) return;
+                    const folders = Array.from(container.querySelectorAll('.talla-folder'));
+
+                    // --- Acordeón: abrir/cerrar cada carpeta de talla ---
+                    function setOpen(folder, open) {
+                        const body = folder.querySelector('.folder-body');
+                        const caret = folder.querySelector('.folder-caret');
+                        if (body) body.style.display = open ? 'flex' : 'none';
+                        if (caret) caret.style.transform = open ? 'rotate(180deg)' : '';
+                    }
+                    folders.forEach(folder => {
+                        const header = folder.querySelector('.folder-header');
+                        header.addEventListener('click', () => {
+                            const body = folder.querySelector('.folder-body');
+                            setOpen(folder, body && body.style.display === 'none');
+                        });
+                    });
+
+                    // --- Filtros desplegables (talla / tienda) ---
+                    const filtros = { talla: '', tienda: '' };
+
+                    function aplicarFiltros() {
+                        folders.forEach(folder => {
+                            const coincideTalla = !filtros.talla || folder.dataset.talla === filtros.talla;
+                            let visiblesEnCarpeta = 0;
+                            folder.querySelectorAll('.talla-opcion').forEach(row => {
+                                const etiquetaTienda = (row.dataset.ciudad || '') + ' — ' + (row.dataset.tienda || '');
+                                const coincideTienda = !filtros.tienda || etiquetaTienda === filtros.tienda;
+                                const mostrar = coincideTalla && coincideTienda;
+                                row.style.display = mostrar ? 'flex' : 'none';
+                                if (mostrar) visiblesEnCarpeta++;
+                            });
+                            folder.style.display = visiblesEnCarpeta > 0 ? '' : 'none';
+                            // Si hay algún filtro activo, abrimos las carpetas que sí
+                            // tienen resultados para que se vean de inmediato.
+                            if (visiblesEnCarpeta > 0 && (filtros.talla || filtros.tienda)) {
+                                setOpen(folder, true);
+                            }
+                        });
+                    }
+
+                    document.querySelectorAll('.master-dd').forEach(dd => {
+                        const key = dd.dataset.dd;
+                        const trigger = dd.querySelector('.master-dd-trigger');
+                        const panel = dd.querySelector('.master-dd-panel');
+                        const label = dd.querySelector('.master-dd-label');
+                        const defecto = label.textContent;
+
+                        trigger.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const abierto = panel.style.display === 'block';
+                            // Cerrar otros paneles antes de abrir este
+                            document.querySelectorAll('.master-dd-panel').forEach(p => p.style.display = 'none');
+                            panel.style.display = abierto ? 'none' : 'block';
+                        });
+
+                        panel.querySelectorAll('.master-dd-option').forEach(opt => {
+                            opt.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                filtros[key] = opt.dataset.value;
+                                label.textContent = opt.dataset.value ? opt.textContent : defecto;
+                                panel.style.display = 'none';
+                                aplicarFiltros();
+                            });
+                        });
+                    });
+
+                    document.addEventListener('click', () => {
+                        document.querySelectorAll('.master-dd-panel').forEach(p => p.style.display = 'none');
+                    });
+                })();
+            </script>
             {% else %}
             <div>
                 <h3 style="color: #8a8f64; margin-bottom: 15px;">
