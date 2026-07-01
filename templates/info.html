@@ -220,7 +220,7 @@
                                     padding: 10px 16px; border-radius: 12px; cursor: pointer;
                                     display: flex; justify-content: space-between; align-items: center; gap: 10px;">
                             <span style="font-weight: bold; font-size: 15px; color: #5f6442;">
-                                📁 Talla {{ g.talla_usco or g.talla }}{% if g.talla_cm and g.talla_cm != 'N/A' %} <span style="font-weight: normal; font-size: 12px; color: #777;">· CM {{ g.talla_cm }}</span>{% endif %}
+                                 Talla {{ g.talla_usco or g.talla }}{% if g.talla_cm and g.talla_cm != 'N/A' %} <span style="font-weight: normal; font-size: 12px; color: #777;">· CM {{ g.talla_cm }}</span>{% endif %}
                             </span>
                             <span style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 12px; color: #777; white-space: nowrap;">{{ g.tiendas|length }} tienda(s) · Stock: {{ g.stock_total }}</span>
