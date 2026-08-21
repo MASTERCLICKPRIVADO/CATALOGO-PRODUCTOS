@@ -40,9 +40,9 @@ No se aplica ningún descuento por cantidad ni se muestran avisos de promoción.
 # ║  Comenta una línea para apagar ese tramo. Comenta todas para apagar todo.║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 REGLAS_DESCUENTO = [
-    #(2, 20),   # Lleva 2 artículos  → 20% adicional
-    #(3, 30),   # Lleva 3 artículos  → 30% adicional
-    #(4, 40),   # Lleva 4 o más      → 40% adicional
+    (2, 20),   # Lleva 2 artículos  → 20% adicional
+    (3, 30),   # Lleva 3 artículos  → 30% adicional
+    (4, 40),   # Lleva 4 o más      → 40% adicional
 ]
 
 
