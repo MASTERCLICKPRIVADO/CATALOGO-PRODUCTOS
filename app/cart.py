@@ -101,6 +101,11 @@ def calcular_carrito(items):
     cantidad = len(items)
     dcto_promo = _dcto_promocional(cantidad)
 
+    # Obtenemos artículos excluidos para la promoción activa, si existe
+    promocion_activa = db.obtener_promocion_activa()
+    id_promo_activa = promocion_activa["id_promocion"] if promocion_activa else None
+    ids_excluidos = db.obtener_set_ids_excluidos(id_promo_activa) if id_promo_activa else set()
+
     subtotal = 0
     total = 0
     items_calc = []
@@ -111,13 +116,13 @@ def calcular_carrito(items):
         precio_antes = _to_int(it.get("precio_antes"))
         precio_ahora = _to_int(it.get("precio"))
         dcto_original = _to_int(it.get("dcto_original"))
-
-        # Flag de la tabla `data` (columna `aplica`, "si" o "no"). Si vale
-        # "no", el artículo SIGUE contando para el tier de promo (2/3/4+
-        # unidades), pero NO recibe el % adicional sobre su precio_ahora.
-        # Default permisivo: cualquier cosa distinta de "no" → aplica.
+        
+        # Verificación de exclusión:
+        # 1. Flag de la tabla `data` (columna `aplica`, "si" o "no").
+        # 2. Si el artículo está en la tabla `excluidos`.
         aplica_str = str(it.get("aplica") or "").strip().lower()
-        no_aplica_promo = (aplica_str == "no")
+        es_excluido = str(it.get("referencia")).strip() in ids_excluidos
+        no_aplica_promo = (aplica_str == "no") or es_excluido
 
         # Defensa / retro-compat para items que se guardaron antes del fix
         # del column-name en agregar_al_carrito (cuando precio_antes quedaba

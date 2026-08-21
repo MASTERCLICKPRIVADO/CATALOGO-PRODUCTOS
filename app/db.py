@@ -640,6 +640,12 @@ def obtener_referencias_excluidas(id_promocion=None):
             return cur.fetchall()
 
 
+def obtener_set_ids_excluidos(id_promocion):
+    """Devuelve un set de IDs de artículos excluidos para la promoción dada."""
+    excluidos = obtener_referencias_excluidas(id_promocion)
+    return {str(ex['article_id']).strip() for ex in excluidos}
+
+
 # ----------------------- POWER BI (REPORTING) -----------------------
 
 # Whitelist de tablas exportables a Power BI con su columna de orden. El
