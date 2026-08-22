@@ -5,195 +5,67 @@
 {% block content %}
 <div class="contenedor" style="display: flex; justify-content: center; align-items: flex-start; flex: 1; flex-wrap: wrap; gap: 24px; padding: 20px 15px;">
 
-    <!-- Tarjeta izquierda: ver el catálogo sin cuenta -->
-    <div class="carta" style="max-width: 380px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
-        <h2 style="margin-bottom: 20px;">Catálogo</h2>
-        <p style="color: #777; font-size: 14px; margin-bottom: 20px;">
-            Mira los productos disponibles sin necesidad de crear una cuenta.
-        </p>
+     <!-- Tarjeta derecha: iniciar sesión (sin cambios funcionales) -->
+     <div class="carta" style="max-width: 400px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
+          <h2 style="margin-bottom: 20px;">Iniciar Sesión</h2>
 
-        <form action="/catalogo" method="get" id="ciudad-form">
-            <div style="margin-bottom: 20px;">
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-weight: 600;">
-                    Seleccione la ciudad más cercana
-                    <button type="button" id="ciudad-help-btn" aria-label="Más información"
-                            style="display: inline-flex; align-items: center; justify-content: center;
-                                   width: 16px; height: 16px; border-radius: 50%; padding: 0;
-                                   font-size: 10px; line-height: 1; color: #999; font-weight: bold;
-                                   background: white; border: 1px solid #ccc; cursor: pointer; flex-shrink: 0;">?</button>
-                </label>
+          {% if error %}
+          <div style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-size: 14px;">
+              {{ error }}
+          </div>
+          {% endif %}
 
-                {# Mensaje de ayuda: oculto hasta que el usuario pulse el botón "?" #}
-                <div id="ciudad-help-msg" role="status"
-                     style="display: none; margin-bottom: 8px; padding: 8px 10px; font-size: 12px;
-                            color: #555; background: #f3f4ec; border: 1px solid rgba(138,143,100,0.3);
-                            border-radius: 8px;">
-                    La ciudad seleccionada determina el costo de envío.
-                </div>
+          <form action="/login" method="post" autocomplete="off">
+              <div style="margin-bottom: 16px;">
+                  <label for="username" style="display: block; margin-bottom: 8px; font-weight: 600;">Usuario</label>
+                  <input type="text" id="username" name="username" class="search-input"
+                         placeholder="tu@email.com" required
+                         value="{{ form.username or '' }}">
+              </div>
 
-                {# Desplegable con el mismo diseño que los filtros del catálogo
-                   (con barra de búsqueda). No usa <select> nativo. #}
-                <div class="custom-filter-dropdown" id="ciudad-dropdown" style="position: relative; width: 100%;">
-                    <div class="filter-trigger filter-select" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                        <span class="ciudad-trigger-label" style="color: #999;">Selecciona una ciudad</span>
-                        <span style="font-size: 10px; color: #8a8f64;">▼</span>
-                    </div>
-                    <div class="filter-options-wrapper" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; margin-top: 4px; background: white; border: 1px solid rgba(138, 143, 100, 0.3); border-radius: 10px; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 5px; max-height: 250px; flex-direction: column;">
-                        <input type="text" class="filter-search-input filter-select" placeholder="Buscar ciudad..." style="margin-bottom: 5px; height: 30px; font-size: 12px; padding: 5px;">
-                        <div class="filter-options-list" style="overflow-y: auto; flex: 1;">
-                            {% for c in ciudades %}
-                            <div class="filter-option-item" data-value="{{ c }}" style="padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 5px;">{{ c }}</div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <input type="hidden" name="ciudad" id="ciudad-hidden" value="">
-                </div>
-            </div>
+              <div style="margin-bottom: 16px;">
+                  <label for="password" style="display: block; margin-bottom: 8px; font-weight: 600;">Contraseña</label>
+                  <input type="password" id="password" name="password" class="search-input"
+                         placeholder="••••••••" required>
+              </div>
 
-            <button type="submit">Ver</button>
-        </form>
+              <div style="margin-bottom: 24px;">
+                  <label for="codigo_referido" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                      Código de referido
+                  </label>
+                  <input type="text" id="codigo_referido" name="codigo_referido" class="search-input"
+                         placeholder="Ej. ABC123"
+                         value="{{ form.codigo_referido or '' }}"
+                         style="text-transform: uppercase;">
+                  <label class="reserva-chk-row">
+                              <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required>
+                              <span>
+                                  Acepto el <strong>tratamiento de datos</strong> conforme a la
+                                  <a href="https://masterseries.com.co/politica-de-tratamiento-de-la-informacion"
+                                     target="_blank" rel="noopener noreferrer"
+                                     style="color: #2e7d32; text-decoration: underline;">
+                                     política de tratamiento
+                                  </a>.
+                              </span>
+                  </label>
+              </div>
 
-        <script>
-            (function() {
-                const dropdown    = document.getElementById('ciudad-dropdown');
-                const trigger     = dropdown.querySelector('.filter-trigger');
-                const wrapper     = dropdown.querySelector('.filter-options-wrapper');
-                const searchInput = dropdown.querySelector('.filter-search-input');
-                const optionsList = dropdown.querySelector('.filter-options-list');
-                const hiddenInput = document.getElementById('ciudad-hidden');
-                const label       = dropdown.querySelector('.ciudad-trigger-label');
-                const form        = document.getElementById('ciudad-form');
+              <button type="submit">Entrar</button>
+          </form>
 
-                // Abrir / cerrar el desplegable
-                trigger.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const isVisible = wrapper.style.display === 'flex';
-                    wrapper.style.display = isVisible ? 'none' : 'flex';
-                    if (!isVisible) {
-                        optionsList.querySelectorAll('.filter-option-item').forEach(i => i.style.display = "");
-                        if (searchInput) { searchInput.value = ''; setTimeout(() => searchInput.focus(), 10); }
-                    }
-                });
+          <div style="display: flex; align-items: center; gap: 10px; margin: 22px 0 16px;">
+              <hr style="flex: 1; border: none; border-top: 1px solid #e5e5e5;">
+              <span style="color: #999; font-size: 12px;">o</span>
+              <hr style="flex: 1; border: none; border-top: 1px solid #e5e5e5;">
+          </div>
 
-                // Filtrar la lista al escribir
-                if (searchInput) {
-                    searchInput.addEventListener('click', (e) => e.stopPropagation());
-                    searchInput.addEventListener('input', function() {
-                        const q = this.value.toLowerCase();
-                        optionsList.querySelectorAll('.filter-option-item').forEach(item => {
-                            item.style.display = item.textContent.toLowerCase().includes(q) ? "" : "none";
-                        });
-                    });
-                }
-
-                // Elegir una ciudad: NO envía el formulario (eso lo hace el botón "Ver")
-                optionsList.addEventListener('click', (e) => {
-                    const item = e.target.closest('.filter-option-item');
-                    if (item) {
-                        hiddenInput.value = item.dataset.value;
-                        label.textContent = item.textContent;
-                        label.style.color = '';
-                        trigger.style.borderColor = '';
-                        wrapper.style.display = 'none';
-                    }
-                });
-
-                // Hover de los items
-                optionsList.querySelectorAll('.filter-option-item').forEach(item => {
-                    item.addEventListener('mouseenter', () => {
-                        if (item.dataset.value !== hiddenInput.value) { item.style.background = '#f0f0f0'; item.style.color = '#8a8f64'; }
-                    });
-                    item.addEventListener('mouseleave', () => {
-                        if (item.dataset.value !== hiddenInput.value) { item.style.background = ''; item.style.color = ''; }
-                    });
-                });
-
-                // Cerrar al hacer clic fuera
-                document.addEventListener('click', (e) => {
-                    if (!trigger.contains(e.target) && !wrapper.contains(e.target)) wrapper.style.display = 'none';
-                });
-
-                // Validar que se haya elegido una ciudad antes de "Ver"
-                form.addEventListener('submit', (e) => {
-                    if (!hiddenInput.value) {
-                        e.preventDefault();
-                        label.textContent = 'Selecciona una ciudad';
-                        label.style.color = '#c62828';
-                        trigger.style.borderColor = '#c62828';
-                    }
-                });
-
-                // Botón "?" → mostrar / ocultar el mensaje de ayuda
-                const helpBtn = document.getElementById('ciudad-help-btn');
-                const helpMsg = document.getElementById('ciudad-help-msg');
-                helpBtn.addEventListener('click', () => {
-                    helpMsg.style.display = (helpMsg.style.display === 'block') ? 'none' : 'block';
-                });
-            })();
-        </script>
-    </div>
-
-    <!-- Tarjeta derecha: iniciar sesión (sin cambios funcionales) -->
-    <div class="carta" style="max-width: 400px; width: 100%; padding: 40px; background: white; border-radius: 24px;">
-        <h2 style="margin-bottom: 20px;">Iniciar Sesión</h2>
-        
-        {% if error %}
-        <div style="background-color: #ffebee; color: #c62828; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-size: 14px;">
-            {{ error }}
-        </div>
-        {% endif %}
-        
-        <form action="/login" method="post" autocomplete="off">
-            <div style="margin-bottom: 16px;">
-                <label for="username" style="display: block; margin-bottom: 8px; font-weight: 600;">Usuario</label>
-                <input type="text" id="username" name="username" class="search-input"
-                       placeholder="tu@email.com" required
-                       value="{{ form.username or '' }}">
-            </div>
-
-            <div style="margin-bottom: 16px;">
-                <label for="password" style="display: block; margin-bottom: 8px; font-weight: 600;">Contraseña</label>
-                <input type="password" id="password" name="password" class="search-input"
-                       placeholder="••••••••" required>
-            </div>
-
-            <div style="margin-bottom: 24px;">
-                <label for="codigo_referido" style="display: block; margin-bottom: 8px; font-weight: 600;">
-                    Código de referido
-                </label>
-                <input type="text" id="codigo_referido" name="codigo_referido" class="search-input"
-                       placeholder="Ej. ABC123"
-                       value="{{ form.codigo_referido or '' }}"
-                       style="text-transform: uppercase;">
-                <label class="reserva-chk-row">
-                            <input type="checkbox" name="acepta_tratamiento" id="chk-tratamiento" required>
-                            <span>
-                                Acepto el <strong>tratamiento de datos</strong> conforme a la
-                                <a href="https://masterseries.com.co/politica-de-tratamiento-de-la-informacion"
-                                   target="_blank" rel="noopener noreferrer"
-                                   style="color: #2e7d32; text-decoration: underline;">
-                                   política de tratamiento
-                                </a>.
-                            </span>
-                        </label>
-            </div>
-
-            <button type="submit">Entrar</button>
-        </form>
-
-        <div style="display: flex; align-items: center; gap: 10px; margin: 22px 0 16px;">
-            <hr style="flex: 1; border: none; border-top: 1px solid #e5e5e5;">
-            <span style="color: #999; font-size: 12px;">o</span>
-            <hr style="flex: 1; border: none; border-top: 1px solid #e5e5e5;">
-        </div>
-
-        <a href="/registro"
-           style="display: block; text-align: center; padding: 12px; border-radius: 12px;
-                  background: #f3f3f3; color: #444; text-decoration: none; font-weight: 600;
-                  border: 1px solid #ddd;">
-            Crear cuenta nueva
-        </a>
-    </div>
+          <a href="/registro"
+             style="display: block; text-align: center; padding: 12px; border-radius: 12px;
+                    background: #f3f3f3; color: #444; text-decoration: none; font-weight: 600;
+                    border: 1px solid #ddd;">
+              Crear cuenta nueva
+          </a>
+     </div>
 </div>
 {% endblock %}
 
