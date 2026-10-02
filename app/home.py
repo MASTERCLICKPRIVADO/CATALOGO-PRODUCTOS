@@ -56,6 +56,26 @@ def get_promo_image_url() -> str:
         return f"/static/img/{file_name}"
     return f"{base}/storage/v1/object/public/{bucket}/{file_name}?t={int(time.time())}"
 
+
+def get_imagen_url(referencia) -> str:
+    """
+    Construye la URL pública de la foto de un artículo en Cloudflare R2
+    (bucket `fotos-producto`). La clave del objeto es exactamente
+    `<Referencia>.jpg`, así que la URL se deriva de la referencia. Por eso
+    la tabla `data` ya no tiene columna `imagen`: esta es la única fuente.
+
+    OJO: R2 distingue mayúsculas y la extensión va en minúscula.
+    `AC5254.jpg` responde 200; `ac5254.jpg` y `AC5254.JPG` dan 404.
+
+    Devuelve "" si falta R2_PUBLIC_BASE o la referencia viene vacía; los
+    <img> de las plantillas ya caen a /static/img/ESCUDO.jpeg vía `onerror`.
+    """
+    base = (os.getenv("R2_PUBLIC_BASE") or "").rstrip("/")
+    ref = str(referencia or "").strip()
+    if not base or not ref:
+        return ""
+    return f"{base}/{ref}.jpg"
+
 # Mapeo de columnas snake_case de Postgres -> nombres "legacy" del CSV
 # que el resto de la app (templates, filtros) ya conoce.
 _DATA_COLUMN_MAP = {
@@ -72,7 +92,9 @@ _DATA_COLUMN_MAP = {
     "deporte": "Deporte",
     "tipo_producto": "Tipo producto",
     "dcto": "%DCTO",
-    "imagen": "Imagen",
+    # Sin entrada para `imagen`: esa columna se eliminó de la tabla `data`.
+    # La columna `Imagen` la genera load_data() desde la referencia (ver
+    # get_imagen_url).
     "precio_ahora": "Precio Ahora",
     "categoria": "Categoria",
     "subcategoria": "Subcategoria",
@@ -103,7 +125,7 @@ def load_data():
                 cur.execute(
                     """SELECT tienda, inventario, ciudad, referencia, talla, nombre,
                               division, precio_antes, genero, edad, deporte,
-                              tipo_producto, dcto, imagen, precio_ahora,
+                              tipo_producto, dcto, precio_ahora,
                               categoria, subcategoria, talla_cm, talla_co, "talla_u.s_co",
                               aplica
                          FROM data"""
@@ -115,6 +137,18 @@ def load_data():
 
         df = pd.DataFrame(rows)
         df = df.rename(columns=_DATA_COLUMN_MAP)
+
+        # `Imagen` no existe en la tabla `data`: se genera aquí derivándola de
+        # la referencia contra el bucket público de R2 (ver get_imagen_url).
+        # Se usa ese nombre de columna a propósito, porque es el que ya
+        # esperan las plantillas, cart.py y documentos.py.
+        # Se crea SIEMPRE, incluso sin R2_PUBLIC_BASE: en ese caso queda en ""
+        # y los <img> caen a ESCUDO.jpeg, pero la columna debe existir o
+        # `producto.Imagen` reventaría aguas abajo.
+        if 'Referencia' in df.columns:
+            df['Imagen'] = [get_imagen_url(ref) for ref in df['Referencia']]
+        else:
+            df['Imagen'] = ""
 
         if 'Inventario' in df.columns:
             df['Inventario'] = pd.to_numeric(df['Inventario'], errors='coerce').fillna(0).astype(int)

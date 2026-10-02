@@ -239,7 +239,7 @@ async def agregar_al_carrito(
     if producto_row.empty:
         return JSONResponse({"ok": False, "mensaje": "Producto no encontrado."}, status_code=404)
 
-    # Preferir la fila de la ciudad elegida para tomar nombre/precio/imagen
+    # Preferir la fila de la ciudad elegida para tomar nombre/precio
     # correctos (un master puede agregar desde una ciudad distinta a la suya).
     producto_row_ciudad = producto_row[producto_row["Ciudad"].astype(str) == str(ciudad)]
     if not producto_row_ciudad.empty:
@@ -276,7 +276,6 @@ async def agregar_al_carrito(
     # quedaba solo con el % promocional en vez del acumulado.
     precio_antes = producto_row.iloc[0].get("precio_antes", "")
     dcto_original = producto_row.iloc[0].get("%DCTO", "")
-    imagen = producto_row.iloc[0].get("Imagen", "")
 
     last_id = None
     for _ in range(int(cantidad)):
@@ -287,7 +286,6 @@ async def agregar_al_carrito(
             ciudad=ciudad,
             nombre=nombre,
             precio=precio,
-            imagen=imagen,
             precio_antes=precio_antes,
             dcto_original=dcto_original,
         )
@@ -547,25 +545,31 @@ async def descargar_comprobante_reserva(request: Request, reserva_id: int):
 
     # La tabla `reservas` no guarda ni la imagen ni el precio ORIGINAL del
     # artículo (solo `precio_unitario`, que es el precio FINAL con descuento).
-    # Ambos los resolvemos desde el catálogo en memoria (app.state.df) por
-    # Referencia (preferiendo la fila de la ciudad del ítem) para poder mostrar
-    # en el comprobante PDF el descuento de cada artículo.
+    #
+    # La imagen se deriva SIEMPRE de la referencia contra R2, sin depender del
+    # catálogo: antes se sacaba de app.state.df y, si el artículo ya no estaba
+    # ahí (reserva vieja, producto agotado o descatalogado), el comprobante
+    # salía con "Sin imagen" aunque la foto siguiera existiendo en el bucket.
+    #
+    # `precio_antes` sí hay que buscarlo en el catálogo en memoria, por
+    # Referencia y preferiendo la fila de la ciudad del ítem, para poder
+    # mostrar el descuento de cada artículo en el comprobante PDF.
     df = request.app.state.df
-    if df is not None and not df.empty and "Referencia" in df.columns:
-        for it in reserva["items"]:
-            ref = str(it.get("referencia", ""))
-            ciudad_item = str(it.get("ciudad_item", ""))
-            fila = df[df["Referencia"].astype(str) == ref]
-            if "Ciudad" in df.columns and ciudad_item:
-                fila_ciudad = fila[fila["Ciudad"].astype(str) == ciudad_item]
-                if not fila_ciudad.empty:
-                    fila = fila_ciudad
-            if fila.empty:
-                it["imagen"] = ""
-                it["precio_antes"] = 0
-            else:
-                it["imagen"] = str(fila.iloc[0].get("Imagen", "") or "")
-                it["precio_antes"] = _to_int(fila.iloc[0].get("precio_antes", ""))
+    hay_catalogo = df is not None and not df.empty and "Referencia" in df.columns
+    for it in reserva["items"]:
+        ref = str(it.get("referencia", ""))
+        it["imagen"] = home.get_imagen_url(ref)
+        it["precio_antes"] = 0
+        if not hay_catalogo:
+            continue
+        ciudad_item = str(it.get("ciudad_item", ""))
+        fila = df[df["Referencia"].astype(str) == ref]
+        if "Ciudad" in df.columns and ciudad_item:
+            fila_ciudad = fila[fila["Ciudad"].astype(str) == ciudad_item]
+            if not fila_ciudad.empty:
+                fila = fila_ciudad
+        if not fila.empty:
+            it["precio_antes"] = _to_int(fila.iloc[0].get("precio_antes", ""))
 
     try:
         pdf_buffer = documentos.generar_comprobante_reserva_pdf(reserva)

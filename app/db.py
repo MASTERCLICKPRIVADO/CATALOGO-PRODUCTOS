@@ -246,7 +246,23 @@ def reponer_inventario(referencia, talla, ciudad, cantidad: int = 1):
 
 # ----------------------- CARRITO -----------------------
 
-def agregar_item_carrito(usuario, referencia, talla, ciudad, nombre, precio, imagen,
+def _con_imagen(d: dict) -> dict:
+    """
+    Añade al item la URL de su foto, derivada de la referencia contra R2.
+
+    El carrito ya NO guarda la imagen: era una copia redundante (la referencia
+    basta) y además se quedaba congelada con la URL del host viejo. Es el mismo
+    criterio que ya usaban las reservas, cuyas tablas tampoco tienen `imagen`.
+
+    El import va dentro de la función a propósito: home.py importa db.py, así
+    que a nivel de módulo sería una importación circular.
+    """
+    from app.home import get_imagen_url
+    d["imagen"] = get_imagen_url(d.get("referencia"))
+    return d
+
+
+def agregar_item_carrito(usuario, referencia, talla, ciudad, nombre, precio,
                           precio_antes="", dcto_original=""):
     """Agrega una unidad al carrito del usuario. Devuelve el id generado."""
     with _get_conn() as conn:
@@ -254,15 +270,14 @@ def agregar_item_carrito(usuario, referencia, talla, ciudad, nombre, precio, ima
             cur.execute(
                 """INSERT INTO carrito
                        (usuario, referencia, talla, ciudad, nombre, precio,
-                        precio_antes, dcto_original, imagen, cantidad, fecha_agregado)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, NOW())
+                        precio_antes, dcto_original, cantidad, fecha_agregado)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, NOW())
                    RETURNING id""",
                 (
                     str(usuario), str(referencia), str(talla), str(ciudad),
                     str(nombre), str(precio),
                     "" if precio_antes is None else str(precio_antes),
                     "" if dcto_original is None else str(dcto_original),
-                    str(imagen),
                 ),
             )
             new_id = cur.fetchone()["id"]
@@ -276,7 +291,7 @@ def obtener_carrito(usuario):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT c.id, c.usuario, c.referencia, c.talla, c.ciudad, c.nombre, c.precio,
-                          c.precio_antes, c.dcto_original, c.imagen, c.cantidad, c.fecha_agregado,
+                          c.precio_antes, c.dcto_original, c.cantidad, c.fecha_agregado,
                           d.talla_cm, d.talla_co, "talla_u.s_co" as talla_usco,
                           d.aplica
                      FROM carrito c
@@ -302,8 +317,8 @@ def obtener_carrito(usuario):
                 d["fecha_agregado"] = d["fecha_agregado"].strftime("%Y-%m-%d %H:%M:%S")
             else:
                 d["fecha_agregado"] = ""
-            items_map[cid] = d
-            
+            items_map[cid] = _con_imagen(d)
+
     return list(items_map.values())
 
 
@@ -338,13 +353,13 @@ def obtener_item(item_id, usuario):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT id, usuario, referencia, talla, ciudad, nombre, precio,
-                          precio_antes, dcto_original, imagen, cantidad, fecha_agregado
+                          precio_antes, dcto_original, cantidad, fecha_agregado
                      FROM carrito
                     WHERE id = %s AND usuario = %s""",
                 (int(item_id), str(usuario)),
             )
             row = cur.fetchone()
-    return dict(row) if row else None
+    return _con_imagen(dict(row)) if row else None
 
 
 def eliminar_item(item_id, usuario):
@@ -355,7 +370,7 @@ def eliminar_item(item_id, usuario):
                 """DELETE FROM carrito
                     WHERE id = %s AND usuario = %s
                   RETURNING id, usuario, referencia, talla, ciudad, nombre, precio,
-                            precio_antes, dcto_original, imagen, cantidad, fecha_agregado""",
+                            precio_antes, dcto_original, cantidad, fecha_agregado""",
                 (int(item_id), str(usuario)),
             )
             row = cur.fetchone()
@@ -365,7 +380,7 @@ def eliminar_item(item_id, usuario):
     d = dict(row)
     d["id"] = str(d["id"])
     d["cantidad"] = str(d.get("cantidad", 1))
-    return d
+    return _con_imagen(d)
 
 
 def vaciar_carrito(usuario):
@@ -376,7 +391,7 @@ def vaciar_carrito(usuario):
                 """DELETE FROM carrito
                     WHERE usuario = %s
                   RETURNING id, usuario, referencia, talla, ciudad, nombre, precio,
-                            precio_antes, dcto_original, imagen, cantidad, fecha_agregado""",
+                            precio_antes, dcto_original, cantidad, fecha_agregado""",
                 (str(usuario),),
             )
             rows = cur.fetchall()
@@ -386,7 +401,7 @@ def vaciar_carrito(usuario):
         d = dict(r)
         d["id"] = str(d["id"])
         d["cantidad"] = str(d.get("cantidad", 1))
-        items.append(d)
+        items.append(_con_imagen(d))
     return items
 
 
