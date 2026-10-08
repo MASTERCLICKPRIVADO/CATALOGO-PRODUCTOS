@@ -51,7 +51,7 @@ def get_promo_image_url() -> str:
     """
     base = (os.getenv("SUPABASE_URL") or "").rstrip("/")
     bucket = (os.getenv("SUPABASE_STORAGE_BUCKET") or "static").strip("/")
-    file_name = (os.getenv("SUPABASE_PROMO_FILE") or "promocion.jpeg").lstrip("/")
+    file_name = (os.getenv("SUPABASE_PROMO_FILE") or "promocion.jpg").lstrip("/")
     if not base:
         return f"/static/img/{file_name}"
     return f"{base}/storage/v1/object/public/{bucket}/{file_name}?t={int(time.time())}"
