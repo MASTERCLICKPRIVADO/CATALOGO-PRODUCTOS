@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import db
+from app import home
 
 router = APIRouter()
 
@@ -116,19 +117,24 @@ async def login_post(
 
     cod = (codigo_referido or "").strip()
 
-    # Usuario master: NO requiere código de referido. Ve TODO el inventario
-    # (todas las ciudades), así que puede dejar el campo en blanco y entrar.
-    # El campo "Código de referido" de este formulario se IGNORA por completo
-    # para master: nunca cambia su ciudad ni se guarda en `usuarios` (queda
-    # NULL). El código real de vendedor se pide en el formulario de reserva
-    # y se guarda directamente en `reservas_tiendas` (ver app/cart.py).
-    if str(user.get("permisos") or "").strip().lower() == "master":
+    # Usuarios master y admin: NO requieren código de referido. Ven TODO el
+    # inventario (todas las ciudades), así que pueden dejar el campo en blanco
+    # y entrar. El campo "Código de referido" de este formulario se IGNORA por
+    # completo para ellos: nunca cambia su ciudad ni se guarda en `usuarios`
+    # (queda NULL). El código real de vendedor se pide en el formulario de
+    # reserva y se guarda directamente en `reservas_tiendas` (ver app/cart.py).
+    #
+    # La diferencia entre los dos es que `admin` además entra al panel de
+    # descuentos (/admin/descuentos). El permiso se guarda TAL CUAL viene de
+    # la BD —no se normaliza a "master"— porque el panel distingue uno de otro.
+    permiso = str(user.get("permisos") or "").strip().lower()
+    if permiso in home.PERMISOS_SCOPE_TOTAL:
         ciudad = str(user.get("ciudad") or "").strip()
 
         request.session["user"] = user["usuario"]
         request.session["city"] = ciudad
         request.session["referral_code"] = ""
-        request.session["permisos"] = "master"
+        request.session["permisos"] = permiso
         request.session["show_promo"] = True
         request.session["fresh_login"] = True
         return RedirectResponse(url="/", status_code=303)

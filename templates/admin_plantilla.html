@@ -1,0 +1,559 @@
+{% extends 'base.html' %}
+
+{% block title %} {{ plantilla.nombre }} - Admin {% endblock %}
+
+{% block sidebar %}
+<p>Estás editando la plantilla <strong id="eco-nombre-lateral">{{ plantilla.nombre }}</strong>.</p>
+{% if plantilla.activa %}
+<p style="font-size: 13px; color: #8d6e00; background: #fff8e1; padding: 12px;
+          border-radius: 12px; margin-top: 15px;">
+  Esta plantilla está <strong>activa</strong>: lo que guardes se aplica de
+  inmediato en el carrito de todos los usuarios.
+</p>
+{% else %}
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+  Esta plantilla está inactiva, así que puedes editarla con calma: nada de lo
+  que guardes aquí afecta al cliente hasta que la actives.
+</p>
+{% endif %}
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+  El descuento depende de <strong>cuántas prendas</strong> lleve el cliente,
+  no del precio de cada prenda. El % se aplica a cada prenda del carrito.
+  Los artículos excluidos de la promoción vigente no lo reciben.
+</p>
+{% endblock %}
+
+{% block content %}
+<style>
+  .fila-tramo {
+    border: 1px solid #e8e8e0; border-radius: 16px; padding: 14px 16px;
+    margin-bottom: 10px; background: #fcfcfa;
+  }
+  .fila-tramo .campos {
+    display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
+  }
+  .fila-tramo label {
+    font-size: 11px; color: #888; text-transform: uppercase;
+    font-weight: bold; letter-spacing: .3px;
+  }
+  .fila-tramo input, .fila-tramo select {
+    display: block; margin-top: 5px; padding: 10px;
+    border: 1px solid #ddd; border-radius: 10px; font-size: 15px;
+  }
+  .fila-tramo input { width: 130px; }
+  .fila-tramo select { width: 130px; background: white; }
+  .fila-tramo .flecha { font-size: 20px; color: #8a8f64; padding-bottom: 11px; }
+  .fila-tramo .eco { margin: 11px 0 0; font-size: 13px; color: #6e7350; }
+  .fila-tramo .eco.incompleto { color: #aaa; font-style: italic; }
+  /* `width: auto` a propósito: estilos2.css pone `button { width: 100% }`
+     y sin esto la X se estira y se lleva toda la fila. */
+  .quitar-fila {
+    background: none; border: none; color: #c62828; font-size: 22px;
+    cursor: pointer; line-height: 1; padding: 0 4px 10px;
+    width: auto; margin-left: auto;
+  }
+  .caja-aviso {
+    padding: 12px 16px; border-radius: 12px; margin-top: 14px; font-size: 14px;
+  }
+  .caja-ok  { background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; }
+  .caja-mal { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+  .caja-ojo { background: #fff8e1; border: 1px solid #ffe082; color: #8d6e00; }
+</style>
+
+<section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
+  <div style="max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
+
+    <a href="/admin/descuentos" style="color: #8a8f64; font-size: 13px; text-decoration: none;">
+      &larr; Volver a las plantillas
+    </a>
+
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
+      <h1 id="titulo-plantilla" style="color: #8a8f64; margin: 0;">{{ plantilla.nombre }}</h1>
+      {% if plantilla.activa %}
+      <span style="background: #8a8f64; color: white; font-size: 11px; font-weight: bold;
+                   padding: 3px 10px; border-radius: 999px; text-transform: uppercase;">
+        Activa
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Avisos. El servidor los pinta al cargar; el JavaScript reusa las
+         mismas cajas al guardar, para no recargar la página. -->
+    <div id="caja-msg" class="caja-aviso caja-ok"
+         style="{% if not msg %}display: none;{% endif %}">{{ msg or '' }}</div>
+    <div id="caja-error" class="caja-aviso caja-mal"
+         style="{% if not error %}display: none;{% endif %}">{{ error or '' }}</div>
+    <div id="caja-avisos" style="{% if not avisos %}display: none;{% endif %}">
+      {% for aviso in avisos %}
+      <div class="caja-aviso caja-ojo">{{ aviso }}</div>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="/admin/descuentos/plantillas/{{ plantilla.id }}"
+          id="form-plantilla" style="margin-top: 25px;">
+
+      <!-- Nombre -->
+      <label style="display: block; font-size: 12px; color: #888; text-transform: uppercase;
+                    font-weight: bold; margin-bottom: 6px;">Nombre de la plantilla</label>
+      <input type="text" name="nombre" id="campo-nombre" value="{{ plantilla.nombre }}"
+             maxlength="{{ max_largo_nombre }}" required
+             style="width: 100%; max-width: 420px; padding: 11px; border: 1px solid #ddd;
+                    border-radius: 10px;">
+
+      <!-- Tramos: el corazón de la plantilla -->
+      <h3 style="color: #8a8f64; margin: 32px 0 6px;">Descuento por cantidad de prendas</h3>
+      <p style="font-size: 14px; color: #666; margin: 0 0 4px;">
+        La regla es <strong>cuántas prendas lleva el cliente</strong>, no cuánto
+        cuesta cada una. Por ejemplo: desde 2 prendas, 15% adicional.
+      </p>
+      <p style="font-size: 13px; color: #999; margin: 0 0 16px;">
+        Si el carrito alcanza varios tramos se aplica el de mayor cantidad.
+        Máximo {{ max_tramos }} tramos; el porcentaje no puede pasar de
+        {{ porcentaje_max }}%.
+      </p>
+
+      <div id="cuerpo-tramos">
+        {% for regla in plantilla.reglas %}
+        <div class="fila-tramo">
+          <div class="campos">
+            <label>Desde esta cantidad de prendas
+              <input type="number" name="min_items" value="{{ regla.min_items }}"
+                     min="1" max="{{ min_items_max }}" step="1" placeholder="2">
+            </label>
+            <span class="flecha">&rarr;</span>
+            <label>% de descuento
+              <input type="number" name="porcentaje" value="{{ regla.porcentaje }}"
+                     min="0" max="{{ porcentaje_max }}" step="1" placeholder="15">
+            </label>
+            <label>Estado
+              <select name="activo">
+                <option value="1" {% if regla.activo %}selected{% endif %}>Activo</option>
+                <option value="0" {% if not regla.activo %}selected{% endif %}>Pausado</option>
+              </select>
+            </label>
+            <button type="button" class="quitar-fila" title="Quitar este tramo">&times;</button>
+          </div>
+          <p class="eco"></p>
+        </div>
+        {% else %}
+        <!-- Plantilla recién creada: una fila en blanco, para que de entrada
+             se vea que lo que se configura es la CANTIDAD de prendas. -->
+        <div class="fila-tramo">
+          <div class="campos">
+            <label>Desde esta cantidad de prendas
+              <input type="number" name="min_items" value=""
+                     min="1" max="{{ min_items_max }}" step="1" placeholder="2">
+            </label>
+            <span class="flecha">&rarr;</span>
+            <label>% de descuento
+              <input type="number" name="porcentaje" value=""
+                     min="0" max="{{ porcentaje_max }}" step="1" placeholder="15">
+            </label>
+            <label>Estado
+              <select name="activo">
+                <option value="1" selected>Activo</option>
+                <option value="0">Pausado</option>
+              </select>
+            </label>
+            <button type="button" class="quitar-fila" title="Quitar este tramo">&times;</button>
+          </div>
+          <p class="eco"></p>
+        </div>
+        {% endfor %}
+      </div>
+
+      <p id="sin-tramos" style="color: #999; font-style: italic; margin-top: 10px; display: none;">
+        Sin tramos llenos: esta plantilla no aplicaría ningún descuento por cantidad.
+      </p>
+
+      <button type="button" id="agregar-tramo"
+              style="margin-top: 12px; background: none; border: 1px dashed #8a8f64;
+                     color: #8a8f64; padding: 10px 18px; border-radius: 12px; cursor: pointer;">
+        + Agregar tramo
+      </button>
+
+      <!-- Cómo se combina con el descuento propio de la prenda -->
+      <h3 style="color: #8a8f64; margin: 34px 0 10px;">Si la prenda ya trae descuento</h3>
+      <label style="display: flex; align-items: flex-start; gap: 12px; background: #f9f9f9;
+                    padding: 16px 20px; border-radius: 16px; cursor: pointer;">
+        <input type="checkbox" name="acumulativo" value="1" id="acumulativo"
+               {% if plantilla.acumulativo %}checked{% endif %}
+               style="width: 20px; height: 20px; accent-color: #8a8f64; margin-top: 2px;">
+        <span>
+          <strong style="color: #333;">Acumular con el descuento de la prenda</strong>
+          <span style="display: block; font-size: 13px; color: #777; margin-top: 4px;">
+            <strong>Marcado:</strong> el % del tramo se aplica sobre el precio que
+            ya trae rebajado la prenda, así que los dos ahorros se suman.<br>
+            <strong>Sin marcar:</strong> gana el mayor de los dos descuentos (el
+            propio de la prenda o el del tramo), nunca los dos a la vez.
+          </span>
+        </span>
+      </label>
+
+      <!-- Vista previa: es un EJEMPLO, no configuración -->
+      <div style="margin-top: 34px; border: 1px solid #eee; border-radius: 18px;
+                  padding: 20px 22px; background: #fafaf7;">
+        <h3 style="color: #8a8f64; margin: 0 0 4px;">Vista previa</h3>
+        <p style="font-size: 13px; color: #888; margin: 0 0 16px;">
+          Solo para mirar cómo quedarían los precios con los tramos de arriba.
+          <strong>Estos dos números son un ejemplo y no se guardan</strong>:
+          cámbialos para ver el efecto en una prenda cualquiera.
+        </p>
+
+        <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end;
+                    margin-bottom: 16px;">
+          <label style="font-size: 11px; color: #999; text-transform: uppercase; font-weight: bold;">
+            Precio de ejemplo
+            <input type="number" id="ej-precio" value="100000" min="0" step="1000"
+                   style="display: block; width: 150px; padding: 9px; margin-top: 5px;
+                          border: 1px dashed #ccc; border-radius: 10px; background: white;">
+          </label>
+          <label style="font-size: 11px; color: #999; text-transform: uppercase; font-weight: bold;">
+            Descuento propio de esa prenda (%)
+            <input type="number" id="ej-dcto" value="30" min="0" max="99" step="1"
+                   style="display: block; width: 150px; padding: 9px; margin-top: 5px;
+                          border: 1px dashed #ccc; border-radius: 10px; background: white;">
+          </label>
+          <span style="font-size: 13px; color: #777; padding-bottom: 10px;" id="ej-resumen"></span>
+        </div>
+
+        <div id="simulador" style="display: flex; gap: 10px; flex-wrap: wrap;"></div>
+      </div>
+
+      <!-- Guardar -->
+      <div style="display: flex; gap: 15px; margin-top: 32px; flex-wrap: wrap; align-items: center;">
+        <button type="submit" id="btn-guardar" class="btn"
+                style="background: #8a8f64; width: auto; padding: 12px 28px;">
+          Guardar cambios
+        </button>
+        <button type="button" id="btn-descartar" class="btn"
+                style="background: #999; width: auto; padding: 12px 28px;">
+          Descartar
+        </button>
+        <span id="estado-form" style="font-size: 13px; color: #b38600;"></span>
+      </div>
+    </form>
+
+  </div>
+</section>
+
+<script>
+(function () {
+  var cuerpo       = document.getElementById('cuerpo-tramos');
+  var sinTramos    = document.getElementById('sin-tramos');
+  var simulador    = document.getElementById('simulador');
+  var acumulativo  = document.getElementById('acumulativo');
+  var campoNombre  = document.getElementById('campo-nombre');
+  var ejPrecio     = document.getElementById('ej-precio');
+  var ejDcto       = document.getElementById('ej-dcto');
+  var ejResumen    = document.getElementById('ej-resumen');
+  var formulario   = document.getElementById('form-plantilla');
+  var btnGuardar   = document.getElementById('btn-guardar');
+  var btnDescartar = document.getElementById('btn-descartar');
+  var estadoForm   = document.getElementById('estado-form');
+  var cajaMsg      = document.getElementById('caja-msg');
+  var cajaError    = document.getElementById('caja-error');
+  var cajaAvisos   = document.getElementById('caja-avisos');
+  var titulo       = document.getElementById('titulo-plantilla');
+  var ecoLateral   = document.getElementById('eco-nombre-lateral');
+
+  var maxTramos = {{ max_tramos }};
+  var maxPct    = {{ porcentaje_max }};
+  var maxItems  = {{ min_items_max }};
+
+  // Estado confirmado por el servidor, para que "Descartar" no tenga que
+  // pedirle nada y vuelva al instante.
+  var guardadoCrudo = {
+    id: {{ plantilla.id }},
+    nombre: {{ plantilla.nombre | tojson }},
+    acumulativo: {{ 'true' if plantilla.acumulativo else 'false' }},
+    activa: {{ 'true' if plantilla.activa else 'false' }},
+    reglas: {{ plantilla.reglas | tojson }}
+  };
+  var guardado = null;   // instantanea() de ese estado
+  var sucio    = false;
+
+  function pesos(valor) {
+    return '$' + Math.round(valor).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+
+  // ── Filas de tramo ──────────────────────────────────────────────────
+  function filaNueva(min, pct, activo) {
+    var div = document.createElement('div');
+    div.className = 'fila-tramo';
+    div.innerHTML =
+      '<div class="campos">' +
+        '<label>Desde esta cantidad de prendas' +
+          '<input type="number" name="min_items" min="1" max="' + maxItems +
+                '" step="1" placeholder="2">' +
+        '</label>' +
+        '<span class="flecha">&rarr;</span>' +
+        '<label>% de descuento' +
+          '<input type="number" name="porcentaje" min="0" max="' + maxPct +
+                '" step="1" placeholder="15">' +
+        '</label>' +
+        '<label>Estado' +
+          '<select name="activo">' +
+            '<option value="1">Activo</option>' +
+            '<option value="0">Pausado</option>' +
+          '</select>' +
+        '</label>' +
+        '<button type="button" class="quitar-fila" title="Quitar este tramo">&times;</button>' +
+      '</div>' +
+      '<p class="eco"></p>';
+    div.querySelector('[name="min_items"]').value =
+      (min === undefined || min === null) ? '' : min;
+    div.querySelector('[name="porcentaje"]').value =
+      (pct === undefined || pct === null) ? '' : pct;
+    div.querySelector('[name="activo"]').value = (activo === false) ? '0' : '1';
+    return div;
+  }
+
+  function filas() {
+    return Array.prototype.slice.call(cuerpo.querySelectorAll('.fila-tramo'));
+  }
+
+  // Lo que hay escrito ahora mismo (no lo guardado).
+  function leerFilas() {
+    return filas().map(function (fila) {
+      var min = fila.querySelector('[name="min_items"]').value.trim();
+      var pct = fila.querySelector('[name="porcentaje"]').value.trim();
+      return {
+        fila: fila,
+        min: min === '' ? null : parseInt(min, 10),
+        pct: pct === '' ? null : parseInt(pct, 10),
+        activo: fila.querySelector('[name="activo"]').value === '1'
+      };
+    });
+  }
+
+  function completa(d) {
+    return d.min !== null && d.pct !== null && !isNaN(d.min) && !isNaN(d.pct);
+  }
+
+  // Cada fila se explica a sí misma en palabras, para que no quede duda de
+  // que lo que manda es la cantidad de prendas.
+  function pintarEcos(datos) {
+    datos.forEach(function (d) {
+      var eco = d.fila.querySelector('.eco');
+      if (!completa(d)) {
+        eco.className = 'eco incompleto';
+        eco.textContent = 'Llena la cantidad de prendas y el porcentaje.';
+      } else if (!d.activo) {
+        eco.className = 'eco incompleto';
+        eco.textContent = 'Pausado: con ' + d.min + ' prendas o más NO se aplicará el ' +
+                          d.pct + '%.';
+      } else {
+        eco.className = 'eco';
+        eco.textContent = 'Llevando ' + d.min + (d.min === 1 ? ' prenda' : ' prendas') +
+                          ' o más, cada prenda baja un ' + d.pct + '% adicional.';
+      }
+    });
+  }
+
+  // ── Simulador (misma regla que app/logicas_descuento.py) ────────────
+  function tramosActivos(datos) {
+    var t = datos.filter(function (d) { return d.activo && completa(d); })
+                 .map(function (d) { return { min: d.min, pct: d.pct }; });
+    t.sort(function (a, b) { return a.min - b.min; });
+    return t;
+  }
+
+  // descuento_por_cantidad: gana el último tramo cuyo mínimo alcance la cantidad.
+  function pctPara(cantidad, tramos) {
+    var pct = 0;
+    tramos.forEach(function (t) { if (cantidad >= t.min) pct = t.pct; });
+    return pct;
+  }
+
+  // precio_con_descuento.
+  function precioFinal(precioAntes, precioAhora, pctTramo) {
+    if (pctTramo <= 0) return precioAhora;
+    if (acumulativo.checked) return Math.round(precioAhora * (100 - pctTramo) / 100);
+    return Math.min(precioAhora, Math.round(precioAntes * (100 - pctTramo) / 100));
+  }
+
+  function pintar() {
+    var datos = leerFilas();
+    pintarEcos(datos);
+
+    var tramos      = tramosActivos(datos);
+    var precioAntes = Math.max(0, parseInt(ejPrecio.value, 10) || 0);
+    var dctoPropio  = Math.min(99, Math.max(0, parseInt(ejDcto.value, 10) || 0));
+    var precioAhora = Math.round(precioAntes * (100 - dctoPropio) / 100);
+
+    ejResumen.textContent = dctoPropio > 0
+      ? 'Con su ' + dctoPropio + '% propio ya cuesta ' + pesos(precioAhora) + '.'
+      : 'Sin descuento propio.';
+
+    simulador.innerHTML = '';
+    for (var n = 1; n <= 6; n++) {
+      var pct   = pctPara(n, tramos);
+      var fin   = precioFinal(precioAntes, precioAhora, pct);
+      var total = precioAntes > 0 ? Math.round((precioAntes - fin) * 100 / precioAntes) : 0;
+
+      var caja = document.createElement('div');
+      caja.style.cssText =
+        'flex: 1; min-width: 110px; text-align: center; padding: 12px 8px; border-radius: 14px;' +
+        (pct > 0
+          ? 'background: linear-gradient(135deg, #8a8f64, #6e7350); color: white;'
+          : 'background: #f1f1f1; color: #888;');
+      caja.innerHTML =
+        '<div style="font-size: 12px; opacity: 0.85;">' + n + (n === 6 ? '+' : '') +
+          (n === 1 ? ' prenda' : ' prendas') + '</div>' +
+        '<div style="font-size: 18px; font-weight: bold; margin-top: 2px;">' + pesos(fin) + '</div>' +
+        '<div style="font-size: 11px; opacity: 0.85; margin-top: 2px;">' +
+          (pct > 0 ? 'tramo ' + pct + '% &middot; ' : '') + total + '% total</div>';
+      simulador.appendChild(caja);
+    }
+
+    sinTramos.style.display = tramos.length ? 'none' : '';
+  }
+
+  // ── Estado del formulario ───────────────────────────────────────────
+  function instantanea() {
+    return JSON.stringify({
+      nombre: campoNombre.value.trim(),
+      acumulativo: acumulativo.checked,
+      reglas: leerFilas()
+        .filter(completa)
+        .map(function (d) { return [d.min, d.pct, d.activo]; })
+        .sort(function (a, b) { return a[0] - b[0]; })
+    });
+  }
+
+  function revisarSucio() {
+    sucio = instantanea() !== guardado;
+    estadoForm.textContent = sucio ? 'Hay cambios sin guardar.' : '';
+  }
+
+  function cargar(plantilla) {
+    campoNombre.value   = plantilla.nombre;
+    acumulativo.checked = !!plantilla.acumulativo;
+    cuerpo.innerHTML    = '';
+    if (!plantilla.reglas || !plantilla.reglas.length) {
+      cuerpo.appendChild(filaNueva(null, null, true));
+    } else {
+      plantilla.reglas.forEach(function (r) {
+        cuerpo.appendChild(filaNueva(r.min_items, r.porcentaje, r.activo));
+      });
+    }
+    titulo.textContent = plantilla.nombre;
+    if (ecoLateral) ecoLateral.textContent = plantilla.nombre;
+    pintar();
+  }
+
+  function mostrar(caja, texto) {
+    caja.textContent = texto || '';
+    caja.style.display = texto ? '' : 'none';
+  }
+
+  function mostrarAvisos(lista) {
+    cajaAvisos.innerHTML = '';
+    if (!lista || !lista.length) {
+      cajaAvisos.style.display = 'none';
+      return;
+    }
+    lista.forEach(function (texto) {
+      var d = document.createElement('div');
+      d.className = 'caja-aviso caja-ojo';
+      d.textContent = texto;
+      cajaAvisos.appendChild(d);
+    });
+    cajaAvisos.style.display = '';
+  }
+
+  // ── Guardar sin recargar la página ──────────────────────────────────
+  function guardar() {
+    btnGuardar.disabled = true;
+    btnGuardar.textContent = 'Guardando...';
+    mostrar(cajaError, '');
+    mostrar(cajaMsg, '');
+    mostrarAvisos([]);
+
+    fetch(formulario.action, {
+      method: 'POST',
+      body: new FormData(formulario),
+      headers: { 'X-Panel-Json': '1' },
+      credentials: 'same-origin'
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        btnGuardar.disabled = false;
+        if (!d.ok) {
+          btnGuardar.textContent = 'Guardar cambios';
+          mostrar(cajaError, d.error || 'No se pudo guardar.');
+          return;
+        }
+        guardadoCrudo = d.plantilla;
+        cargar(d.plantilla);
+        guardado = instantanea();
+        revisarSucio();
+        mostrar(cajaMsg, d.msg || 'Plantilla guardada.');
+        mostrarAvisos(d.avisos);
+        btnGuardar.textContent = 'Guardado';
+        setTimeout(function () { btnGuardar.textContent = 'Guardar cambios'; }, 1800);
+      })
+      .catch(function () {
+        // Si el fetch falla (red caída, sesión vencida), no se pierde nada:
+        // se envía el formulario de siempre y el servidor responde HTML.
+        formulario.submit();
+      });
+  }
+
+  // ── Eventos ─────────────────────────────────────────────────────────
+  document.getElementById('agregar-tramo').addEventListener('click', function () {
+    if (filas().length >= maxTramos) {
+      mostrar(cajaError, 'El máximo es ' + maxTramos + ' tramos.');
+      return;
+    }
+    var fila = filaNueva(null, null, true);
+    cuerpo.appendChild(fila);
+    fila.querySelector('[name="min_items"]').focus();
+    pintar();
+    revisarSucio();
+  });
+
+  cuerpo.addEventListener('click', function (e) {
+    if (!e.target.classList.contains('quitar-fila')) return;
+    e.target.closest('.fila-tramo').remove();
+    if (!filas().length) cuerpo.appendChild(filaNueva(null, null, true));
+    pintar();
+    revisarSucio();
+  });
+
+  formulario.addEventListener('submit', function (e) {
+    if (!window.fetch || !window.FormData) return;  // navegador viejo: envío normal
+    e.preventDefault();
+    guardar();
+  });
+
+  btnDescartar.addEventListener('click', function () {
+    if (sucio && !confirm('¿Descartar los cambios sin guardar?')) return;
+    cargar(guardadoCrudo);
+    guardado = instantanea();
+    revisarSucio();
+    mostrar(cajaError, '');
+    mostrar(cajaMsg, '');
+    mostrarAvisos([]);
+  });
+
+  formulario.addEventListener('input',  function () { pintar(); revisarSucio(); });
+  formulario.addEventListener('change', function () { pintar(); revisarSucio(); });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (!sucio) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  // ── Arranque ────────────────────────────────────────────────────────
+  pintar();
+  guardado = instantanea();
+  revisarSucio();
+})();
+</script>
+{% endblock %}

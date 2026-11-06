@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.sql import SQL, Identifier
+from psycopg.types.json import Json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -659,6 +660,371 @@ def obtener_set_ids_excluidos(id_promocion):
     """Devuelve un set de IDs de artículos excluidos para la promoción dada."""
     excluidos = obtener_referencias_excluidas(id_promocion)
     return {str(ex['article_id']).strip() for ex in excluidos}
+
+
+# ----------------------- DESCUENTOS POR CANTIDAD -----------------------
+#
+# El admin guarda varias PLANTILLAS de descuento ("Navidad", "Black Friday")
+# en `plantillas_descuento`, cada una con sus tramos en `reglas_descuento` y
+# con su propio modo acumulativo. Exactamente una puede estar activa (lo
+# garantiza un índice único parcial) y el carrito usa esa.
+#
+# `config_descuentos` es el interruptor general: apaga la promoción sin
+# desactivar ni perder la plantilla.
+#
+# Ver migraciones/migracion_descuentos.sql, migraciones/migracion_plantillas.sql
+# y app/logicas_descuento.py.
+
+
+def _interruptor_general(cur) -> bool:
+    """Lee el interruptor general con un cursor ya abierto."""
+    cur.execute("SELECT activo FROM config_descuentos WHERE id IS TRUE")
+    fila = cur.fetchone()
+    return True if fila is None else bool(fila["activo"])
+
+
+def _auditar(cur, usuario: str, accion: str, detalle: dict):
+    """Deja constancia de un cambio de descuentos (mismo cursor/transacción)."""
+    cur.execute(
+        """INSERT INTO descuentos_auditoria (fecha, usuario, accion, detalle)
+           VALUES (%s, %s, %s, %s)""",
+        (hora_bogota_para_guardar(), str(usuario), str(accion), Json(detalle)),
+    )
+
+
+def obtener_descuentos_vigentes() -> dict:
+    """
+    Lo que necesita el CARRITO, en una sola conexión:
+
+        {"activo": bool, "acumulativo": bool, "plantilla": str|None,
+         "reglas": [(min_items, porcentaje), ...]}
+
+    Sale de la plantilla ACTIVA y solo con sus tramos activos, ya ordenados.
+    Si no hay ninguna plantilla activa, `reglas` viene vacío: no hay promoción
+    configurada y el carrito no aplica descuento por cantidad.
+
+    Lanza excepción si la BD no responde: quien llama (app/logicas_descuento)
+    decide qué hacer, y lo que hace es caer a los tramos de respaldo del código.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            activo = _interruptor_general(cur)
+
+            cur.execute(
+                "SELECT id, nombre, acumulativo FROM plantillas_descuento WHERE activa LIMIT 1"
+            )
+            plantilla = cur.fetchone()
+
+            if not plantilla:
+                return {"activo": activo, "acumulativo": True,
+                        "plantilla": None, "reglas": []}
+
+            cur.execute(
+                """SELECT min_items, porcentaje
+                     FROM reglas_descuento
+                    WHERE plantilla_id = %s AND activo
+                    ORDER BY min_items""",
+                (plantilla["id"],),
+            )
+            reglas = [(int(r["min_items"]), int(r["porcentaje"])) for r in cur.fetchall()]
+
+    return {
+        "activo": activo,
+        "acumulativo": bool(plantilla["acumulativo"]),
+        "plantilla": plantilla["nombre"],
+        "reglas": reglas,
+    }
+
+
+def listar_plantillas() -> dict:
+    """
+    Todas las plantillas con sus tramos, para la lista del panel:
+
+        {"activo": bool, "plantillas": [{id, nombre, acumulativo, activa,
+                                         reglas: [{min_items, porcentaje, activo}]}]}
+
+    Incluye los tramos pausados, porque el admin tiene que verlos para poder
+    volver a prenderlos. La activa va primero.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            activo = _interruptor_general(cur)
+
+            cur.execute(
+                """SELECT id, nombre, acumulativo, activa, actualizado_por, actualizado_en
+                     FROM plantillas_descuento
+                    ORDER BY activa DESC, LOWER(TRIM(nombre))"""
+            )
+            plantillas = [dict(p) for p in cur.fetchall()]
+
+            cur.execute(
+                """SELECT plantilla_id, min_items, porcentaje, activo
+                     FROM reglas_descuento
+                    ORDER BY plantilla_id, min_items"""
+            )
+            por_plantilla = {}
+            for fila in cur.fetchall():
+                por_plantilla.setdefault(fila["plantilla_id"], []).append({
+                    "min_items": int(fila["min_items"]),
+                    "porcentaje": int(fila["porcentaje"]),
+                    "activo": bool(fila["activo"]),
+                })
+
+    for plantilla in plantillas:
+        plantilla["acumulativo"] = bool(plantilla["acumulativo"])
+        plantilla["activa"] = bool(plantilla["activa"])
+        plantilla["reglas"] = por_plantilla.get(plantilla["id"], [])
+
+    return {"activo": activo, "plantillas": plantillas}
+
+
+def obtener_plantilla(plantilla_id: int):
+    """Una plantilla con sus tramos (incluidos los pausados), o None."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, nombre, acumulativo, activa
+                     FROM plantillas_descuento
+                    WHERE id = %s""",
+                (int(plantilla_id),),
+            )
+            plantilla = cur.fetchone()
+            if not plantilla:
+                return None
+
+            cur.execute(
+                """SELECT min_items, porcentaje, activo
+                     FROM reglas_descuento
+                    WHERE plantilla_id = %s
+                    ORDER BY min_items""",
+                (int(plantilla_id),),
+            )
+            reglas = [
+                {
+                    "min_items": int(r["min_items"]),
+                    "porcentaje": int(r["porcentaje"]),
+                    "activo": bool(r["activo"]),
+                }
+                for r in cur.fetchall()
+            ]
+
+    return {
+        "id": int(plantilla["id"]),
+        "nombre": plantilla["nombre"],
+        "acumulativo": bool(plantilla["acumulativo"]),
+        "activa": bool(plantilla["activa"]),
+        "reglas": reglas,
+    }
+
+
+def _escribir_reglas(cur, plantilla_id: int, reglas: list, usuario: str):
+    """
+    Reemplaza los tramos de una plantilla (borrar + insertar).
+
+    El panel siempre manda la tabla completa, así que un reemplazo es más
+    simple y más seguro que actualizar fila por fila: no hay forma de quedar
+    con una configuración a medias si dos guardados coinciden en el tiempo.
+    """
+    cur.execute("DELETE FROM reglas_descuento WHERE plantilla_id = %s", (int(plantilla_id),))
+    for regla in reglas:
+        cur.execute(
+            """INSERT INTO reglas_descuento
+                   (plantilla_id, min_items, porcentaje, activo, actualizado_por, actualizado_en)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (
+                int(plantilla_id),
+                int(regla["min_items"]),
+                int(regla["porcentaje"]),
+                bool(regla.get("activo", True)),
+                str(usuario),
+                hora_bogota_para_guardar(),
+            ),
+        )
+
+
+def crear_plantilla(nombre: str, acumulativo: bool, reglas: list, usuario: str) -> int:
+    """Crea una plantilla (siempre inactiva) y devuelve su id.
+
+    Nace inactiva a propósito: crear una plantilla nueva nunca debe cambiarle
+    el precio al cliente. Se activa después, como un paso aparte y explícito.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO plantillas_descuento
+                       (nombre, acumulativo, activa, actualizado_por, actualizado_en)
+                   VALUES (%s, %s, false, %s, %s)
+                   RETURNING id""",
+                (str(nombre).strip(), bool(acumulativo), str(usuario),
+                 hora_bogota_para_guardar()),
+            )
+            plantilla_id = int(cur.fetchone()["id"])
+
+            _escribir_reglas(cur, plantilla_id, reglas, usuario)
+            _auditar(cur, usuario, "crear_plantilla", {
+                "plantilla_id": plantilla_id,
+                "nombre": nombre,
+                "acumulativo": bool(acumulativo),
+                "reglas": reglas,
+            })
+
+    return plantilla_id
+
+
+def guardar_plantilla(plantilla_id: int, nombre: str, acumulativo: bool,
+                      reglas: list, usuario: str) -> dict:
+    """
+    Guarda nombre, modo acumulativo y tramos de una plantilla existente.
+
+    Devuelve el estado ANTERIOR (para la auditoría y para poder revertir).
+    No cambia cuál plantilla está activa.
+    """
+    anterior = obtener_plantilla(plantilla_id)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE plantillas_descuento
+                      SET nombre = %s,
+                          acumulativo = %s,
+                          actualizado_por = %s,
+                          actualizado_en = %s
+                    WHERE id = %s""",
+                (str(nombre).strip(), bool(acumulativo), str(usuario),
+                 hora_bogota_para_guardar(), int(plantilla_id)),
+            )
+
+            _escribir_reglas(cur, plantilla_id, reglas, usuario)
+            _auditar(cur, usuario, "guardar_plantilla", {
+                "plantilla_id": int(plantilla_id),
+                "antes": anterior,
+                "despues": {
+                    "nombre": nombre,
+                    "acumulativo": bool(acumulativo),
+                    "reglas": reglas,
+                },
+            })
+
+    return anterior
+
+
+def duplicar_plantilla(plantilla_id: int, usuario: str):
+    """
+    Copia una plantilla con un nombre libre ("Navidad (copia)", "(copia 2)"...).
+
+    Devuelve el id de la copia, o None si la original no existe. La copia nace
+    inactiva, como cualquier plantilla nueva.
+    """
+    original = obtener_plantilla(plantilla_id)
+    if not original:
+        return None
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT LOWER(TRIM(nombre)) AS nombre FROM plantillas_descuento"
+            )
+            usados = {f["nombre"] for f in cur.fetchall()}
+
+    base = original["nombre"]
+    nombre = f"{base} (copia)"
+    contador = 2
+    while nombre.strip().lower() in usados:
+        nombre = f"{base} (copia {contador})"
+        contador += 1
+
+    return crear_plantilla(nombre, original["acumulativo"], original["reglas"], usuario)
+
+
+def activar_plantilla(plantilla_id: int, usuario: str) -> bool:
+    """
+    Deja activa SOLO la plantilla indicada. Devuelve False si no existe.
+
+    Son dos UPDATE en una transacción (apagar todas, prender una) en vez de
+    uno solo: el índice único parcial que garantiza "una sola activa" se
+    evalúa fila por fila, y un intercambio en una sola sentencia puede
+    chocar consigo mismo.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nombre FROM plantillas_descuento WHERE id = %s",
+                (int(plantilla_id),),
+            )
+            plantilla = cur.fetchone()
+            if not plantilla:
+                return False
+
+            cur.execute("SELECT id, nombre FROM plantillas_descuento WHERE activa")
+            antes = cur.fetchone()
+
+            cur.execute("UPDATE plantillas_descuento SET activa = false WHERE activa")
+            cur.execute(
+                """UPDATE plantillas_descuento
+                      SET activa = true, actualizado_por = %s, actualizado_en = %s
+                    WHERE id = %s""",
+                (str(usuario), hora_bogota_para_guardar(), int(plantilla_id)),
+            )
+
+            _auditar(cur, usuario, "activar_plantilla", {
+                "antes": dict(antes) if antes else None,
+                "despues": {"id": int(plantilla_id), "nombre": plantilla["nombre"]},
+            })
+
+    return True
+
+
+def borrar_plantilla(plantilla_id: int, usuario: str) -> bool:
+    """
+    Borra una plantilla y sus tramos (cascada). Devuelve False si no existe.
+
+    Quien llama debe impedir borrar la plantilla activa (ver app/admin.py):
+    aquí no se valida para que la función siga siendo una operación simple.
+    """
+    plantilla = obtener_plantilla(plantilla_id)
+    if not plantilla:
+        return False
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM plantillas_descuento WHERE id = %s", (int(plantilla_id),)
+            )
+            _auditar(cur, usuario, "borrar_plantilla", {"plantilla": plantilla})
+
+    return True
+
+
+def guardar_interruptor_general(activo: bool, usuario: str):
+    """Prende o apaga TODA la promoción por cantidad, sin tocar las plantillas."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            antes = _interruptor_general(cur)
+            cur.execute(
+                """INSERT INTO config_descuentos (id, activo, actualizado_por, actualizado_en)
+                   VALUES (true, %s, %s, %s)
+                   ON CONFLICT (id) DO UPDATE
+                      SET activo = EXCLUDED.activo,
+                          actualizado_por = EXCLUDED.actualizado_por,
+                          actualizado_en = EXCLUDED.actualizado_en""",
+                (bool(activo), str(usuario), hora_bogota_para_guardar()),
+            )
+            _auditar(cur, usuario, "interruptor_general",
+                     {"antes": antes, "despues": bool(activo)})
+
+
+def obtener_auditoria_descuentos(limite: int = 10):
+    """Últimos cambios de descuentos, del más reciente al más antiguo."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT fecha, usuario, accion, detalle
+                     FROM descuentos_auditoria
+                    ORDER BY fecha DESC, id DESC
+                    LIMIT %s""",
+                (int(limite),),
+            )
+            return cur.fetchall()
 
 
 # ----------------------- POWER BI (REPORTING) -----------------------

@@ -1,0 +1,373 @@
+{% extends 'base.html' %}
+
+{% block title %} Descuentos - Admin {% endblock %}
+
+{% block sidebar %}
+<p>Panel de administración. Aquí defines el descuento adicional que se aplica
+   en el carrito <strong>según cuántas prendas</strong> lleve el cliente.</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Guardas tantas plantillas como quieras, pero solo <strong>una está
+   activa</strong>: esa es la que ve el cliente. Las demás quedan guardadas
+   listas para cuando las necesites.
+</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Las reservas ya guardadas <strong>no cambian</strong>: cada una conserva
+   los precios con los que se hizo. Los carritos que estén abiertos sí se
+   recalculan con la plantilla nueva.
+</p>
+{% endblock %}
+
+{% block content %}
+<style>
+  .tarjeta-plantilla {
+    border: 1px solid #eee; border-radius: 16px; padding: 18px 20px;
+    margin-bottom: 14px; background: white; transition: border-color .15s, background .15s;
+  }
+  .tarjeta-plantilla.activa { border-color: #8a8f64; background: #fcfdf8; }
+  .chip {
+    font-size: 12px; color: #777; background: #f1f1f1;
+    padding: 3px 10px; border-radius: 999px;
+  }
+  .chip-activa {
+    background: #8a8f64; color: white; font-size: 11px; font-weight: bold;
+    padding: 3px 10px; border-radius: 999px; text-transform: uppercase;
+  }
+  .chip-tramo {
+    font-size: 13px; padding: 5px 12px; border-radius: 999px;
+    background: #8a8f64; color: white;
+  }
+  .chip-tramo.pausado {
+    background: #f1f1f1; color: #999; text-decoration: line-through;
+  }
+  .caja-aviso {
+    padding: 12px 16px; border-radius: 12px; margin-top: 20px; font-size: 14px;
+  }
+  .caja-ok  { background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; }
+  .caja-mal { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+  .caja-ojo { background: #fff8e1; border: 1px solid #ffe082; color: #8d6e00; }
+  #caja-interruptor {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap; padding: 18px 22px; border-radius: 16px;
+    margin-top: 25px;
+  }
+  #caja-interruptor.prendido { background: #f1f4e8; }
+  #caja-interruptor.apagado  { background: #fbeaea; }
+  /* `width: auto` a propósito: estilos2.css pone `button { width: 100% }`. */
+  .enlace-borrar {
+    background: none; border: none; color: #c62828; font-size: 13px;
+    cursor: pointer; text-decoration: underline; width: auto;
+  }
+  .ocupado { opacity: .55; pointer-events: none; }
+</style>
+
+<section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
+  <div style="max-width: 980px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
+
+    <div style="display: flex; align-items: baseline; gap: 15px; flex-wrap: wrap;">
+      <h1 style="color: #8a8f64; margin-bottom: 5px;">Descuentos por cantidad de prendas</h1>
+      <p style="color: #999; margin: 0; font-size: 0.85rem;">
+        Lo que active aquí se aplica en el carrito de todos los usuarios.
+      </p>
+    </div>
+
+    <div id="caja-msg" class="caja-aviso caja-ok"
+         style="{% if not msg %}display: none;{% endif %}">{{ msg or '' }}</div>
+    <div id="caja-error" class="caja-aviso caja-mal"
+         style="{% if not error %}display: none;{% endif %}">{{ error or '' }}</div>
+
+    {% if origen == 'respaldo' %}
+    <div class="caja-aviso caja-ojo">
+      El carrito está aplicando en este momento los tramos de
+      <strong>respaldo</strong> del código, porque no se pudo leer la base de
+      datos. Lo que guardes aquí entrará en vigor cuando la base de datos
+      vuelva a responder.
+    </div>
+    {% endif %}
+
+    <!-- Interruptor general -->
+    <div id="caja-interruptor" class="{% if descuento_activo %}prendido{% else %}apagado{% endif %}">
+      <div>
+        <strong id="titulo-interruptor" style="color: #333;">
+          {% if descuento_activo %}
+            Descuento por cantidad: prendido
+          {% else %}
+            Descuento por cantidad: apagado
+          {% endif %}
+        </strong>
+        <span id="sub-interruptor" style="display: block; font-size: 13px; color: #777; margin-top: 3px;">
+          {% if descuento_activo %}
+            Se aplica la plantilla activa. Apágalo para quitar la promoción sin
+            perder ninguna plantilla.
+          {% else %}
+            Ninguna plantilla se está aplicando: todos los artículos se cobran
+            a su precio normal.
+          {% endif %}
+        </span>
+      </div>
+      <form method="post" action="/admin/descuentos/interruptor" id="form-interruptor" style="margin: 0;">
+        <input type="hidden" name="activo" id="valor-interruptor"
+               value="{% if descuento_activo %}0{% else %}1{% endif %}">
+        <button type="submit" class="btn" id="btn-interruptor"
+                style="width: auto; padding: 10px 22px; background: {% if descuento_activo %}#c62828{% else %}#8a8f64{% endif %};">
+          {% if descuento_activo %}Apagar{% else %}Prender{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <!-- Plantillas -->
+    <h3 style="color: #8a8f64; margin: 35px 0 10px;">Plantillas</h3>
+
+    <p id="sin-plantillas" style="color: #999; font-style: italic;
+       {% if plantillas %}display: none;{% endif %}">
+      Todavía no hay plantillas. Crea la primera abajo.
+    </p>
+
+    <div id="lista-plantillas">
+      {% for plantilla in plantillas %}
+      <div class="tarjeta-plantilla {% if plantilla.activa %}activa{% endif %}"
+           data-id="{{ plantilla.id }}" data-nombre="{{ plantilla.nombre }}">
+
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <strong style="font-size: 17px; color: #333;">{{ plantilla.nombre }}</strong>
+
+          <span class="chip-activa" {% if not plantilla.activa %}style="display: none;"{% endif %}>
+            Activa
+          </span>
+
+          <span class="chip">
+            {% if plantilla.acumulativo %}
+              Acumulativo: se encadena con el descuento de la prenda
+            {% else %}
+              No acumulativo: gana el mayor de los dos descuentos
+            {% endif %}
+          </span>
+        </div>
+
+        <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+          {% for regla in plantilla.reglas %}
+          <span class="chip-tramo {% if not regla.activo %}pausado{% endif %}">
+            Desde {{ regla.min_items }} prendas &rarr; {{ regla.porcentaje }}%
+          </span>
+          {% else %}
+          <span style="font-size: 13px; color: #999; font-style: italic;">
+            Sin tramos: esta plantilla no aplicaría ningún descuento.
+          </span>
+          {% endfor %}
+        </div>
+
+        <div style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+          <a href="/admin/descuentos/plantillas/{{ plantilla.id }}" class="btn"
+             style="width: auto; padding: 8px 18px; font-size: 13px; background: #8a8f64;
+                    text-decoration: none;">
+            Editar
+          </a>
+
+          <form method="post" action="/admin/descuentos/plantillas/{{ plantilla.id }}/activar"
+                class="form-activar solo-inactiva" style="margin: 0;
+                {% if plantilla.activa %}display: none;{% endif %}">
+            <button type="submit" class="btn"
+                    style="width: auto; padding: 8px 18px; font-size: 13px; background: #6e7350;">
+              Activar
+            </button>
+          </form>
+
+          <form method="post" action="/admin/descuentos/plantillas/{{ plantilla.id }}/duplicar"
+                style="margin: 0;">
+            <button type="submit" class="btn"
+                    style="width: auto; padding: 8px 18px; font-size: 13px; background: none;
+                           color: #8a8f64; border: 1px solid #8a8f64;">
+              Duplicar
+            </button>
+          </form>
+
+          <form method="post" action="/admin/descuentos/plantillas/{{ plantilla.id }}/borrar"
+                class="form-borrar solo-inactiva" style="margin: 0;
+                {% if plantilla.activa %}display: none;{% endif %}">
+            <button type="submit" class="enlace-borrar">Borrar</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Crear nueva -->
+    <form method="post" action="/admin/descuentos/plantillas/nueva"
+          style="margin-top: 25px; border: 1px dashed #8a8f64; border-radius: 16px; padding: 20px;">
+      <strong style="color: #8a8f64; display: block; margin-bottom: 12px;">Nueva plantilla</strong>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        <input type="text" name="nombre" placeholder="Navidad, Black Friday, Normal..."
+               maxlength="{{ max_largo_nombre }}" required
+               style="flex: 1; min-width: 220px; padding: 11px; border: 1px solid #ddd;
+                      border-radius: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #555;">
+          <input type="checkbox" name="acumulativo" value="1" checked
+                 style="width: 17px; height: 17px; accent-color: #8a8f64;">
+          Acumulativo
+        </label>
+        <button type="submit" class="btn" style="width: auto; padding: 11px 24px; background: #8a8f64;">
+          Crear
+        </button>
+      </div>
+      <p style="font-size: 12px; color: #888; margin: 12px 0 0;">
+        Nace inactiva y sin tramos: crearla nunca cambia el precio que ve el
+        cliente. Te lleva directo a su editor para que pongas los tramos.
+      </p>
+    </form>
+
+    <!-- Auditoría -->
+    {% if auditoria %}
+    <h3 style="color: #8a8f64; margin: 40px 0 4px;">Últimos cambios</h3>
+    <p style="font-size: 12px; color: #aaa; margin: 0 0 10px;">
+      Historial tal como estaba al abrir la página.
+    </p>
+    <ul style="list-style: none; padding: 0; font-size: 13px; color: #555;">
+      {% for registro in auditoria %}
+      <li style="padding: 10px 0; border-bottom: 1px solid #eee;">
+        <strong>{{ registro.fecha.strftime('%Y-%m-%d %H:%M') }}</strong>
+        — {{ registro.usuario }}
+        <span style="display: block; color: #888; margin-top: 3px;">
+          {% if registro.accion == 'activar_plantilla' %}
+            Activó «{{ registro.detalle.despues.nombre if registro.detalle and registro.detalle.despues else '?' }}»
+          {% elif registro.accion == 'crear_plantilla' %}
+            Creó «{{ registro.detalle.nombre if registro.detalle else '?' }}»
+          {% elif registro.accion == 'guardar_plantilla' %}
+            Editó «{{ registro.detalle.despues.nombre if registro.detalle and registro.detalle.despues else '?' }}»
+          {% elif registro.accion == 'borrar_plantilla' %}
+            Borró «{{ registro.detalle.plantilla.nombre if registro.detalle and registro.detalle.plantilla else '?' }}»
+          {% elif registro.accion == 'interruptor_general' %}
+            {% if registro.detalle and registro.detalle.despues %}Prendió{% else %}Apagó{% endif %} el descuento por cantidad
+          {% else %}
+            {{ registro.accion }}
+          {% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+  </div>
+</section>
+
+<script>
+(function () {
+  if (!window.fetch || !window.FormData) return;  // sin fetch: formularios normales
+
+  var cajaMsg    = document.getElementById('caja-msg');
+  var cajaError  = document.getElementById('caja-error');
+  var lista      = document.getElementById('lista-plantillas');
+  var sinNada    = document.getElementById('sin-plantillas');
+  var cajaInt    = document.getElementById('caja-interruptor');
+  var tituloInt  = document.getElementById('titulo-interruptor');
+  var subInt     = document.getElementById('sub-interruptor');
+  var btnInt     = document.getElementById('btn-interruptor');
+  var valorInt   = document.getElementById('valor-interruptor');
+
+  function mostrar(caja, texto) {
+    caja.textContent = texto || '';
+    caja.style.display = texto ? '' : 'none';
+  }
+
+  function limpiar() {
+    mostrar(cajaMsg, '');
+    mostrar(cajaError, '');
+  }
+
+  // Manda el formulario por fetch y devuelve el JSON. Si algo se tuerce,
+  // deja que el navegador lo envíe como siempre y recargue.
+  function enviar(form, alOk) {
+    var boton = form.querySelector('button');
+    limpiar();
+    form.classList.add('ocupado');
+    if (boton) boton.disabled = true;
+
+    fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'X-Panel-Json': '1' },
+      credentials: 'same-origin'
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        form.classList.remove('ocupado');
+        if (boton) boton.disabled = false;
+        if (!d.ok) {
+          mostrar(cajaError, d.error || 'No se pudo hacer el cambio.');
+          return;
+        }
+        alOk(d);
+        mostrar(cajaMsg, d.msg || 'Listo.');
+      })
+      .catch(function () {
+        form.submit();
+      });
+  }
+
+  // ── Interruptor general ─────────────────────────────────────────────
+  var formInt = document.getElementById('form-interruptor');
+  formInt.addEventListener('submit', function (e) {
+    e.preventDefault();
+    enviar(formInt, function (d) {
+      var prendido = !!d.activo;
+      cajaInt.className = prendido ? 'prendido' : 'apagado';
+      tituloInt.textContent = prendido
+        ? 'Descuento por cantidad: prendido'
+        : 'Descuento por cantidad: apagado';
+      subInt.textContent = prendido
+        ? 'Se aplica la plantilla activa. Apágalo para quitar la promoción sin perder ninguna plantilla.'
+        : 'Ninguna plantilla se está aplicando: todos los artículos se cobran a su precio normal.';
+      btnInt.textContent = prendido ? 'Apagar' : 'Prender';
+      btnInt.style.background = prendido ? '#c62828' : '#8a8f64';
+      valorInt.value = prendido ? '0' : '1';
+    });
+  });
+
+  // ── Activar / Borrar, delegados en la lista ─────────────────────────
+  function marcarActiva(id) {
+    Array.prototype.forEach.call(lista.children, function (tarjeta) {
+      var esta = tarjeta.dataset.id === String(id);
+      tarjeta.classList.toggle('activa', esta);
+      var chip = tarjeta.querySelector('.chip-activa');
+      if (chip) chip.style.display = esta ? '' : 'none';
+      // Activar y Borrar solo tienen sentido en las que NO están activas.
+      Array.prototype.forEach.call(
+        tarjeta.querySelectorAll('.solo-inactiva'),
+        function (el) { el.style.display = esta ? 'none' : ''; }
+      );
+    });
+    var activa = lista.querySelector('[data-id="' + id + '"]');
+    if (activa) lista.insertBefore(activa, lista.firstChild);  // la activa va de primera
+  }
+
+  lista.addEventListener('submit', function (e) {
+    var form = e.target;
+    var tarjeta = form.closest('.tarjeta-plantilla');
+    if (!tarjeta) return;
+
+    if (form.classList.contains('form-activar')) {
+      e.preventDefault();
+      if (!confirm('¿Activar «' + tarjeta.dataset.nombre + '»? Se aplicará de ' +
+                   'inmediato en el carrito de todos los usuarios.')) return;
+      enviar(form, function (d) { marcarActiva(d.plantilla_id); });
+      return;
+    }
+
+    if (form.classList.contains('form-borrar')) {
+      e.preventDefault();
+      if (!confirm('¿Borrar «' + tarjeta.dataset.nombre + '» y sus tramos? ' +
+                   'No se puede deshacer.')) return;
+      enviar(form, function () {
+        tarjeta.remove();
+        if (!lista.children.length) sinNada.style.display = '';
+      });
+      return;
+    }
+
+    // "Duplicar" y "Nueva" llevan al editor de la copia: ahí sí queremos
+    // que el navegador navegue de verdad.
+  });
+})();
+</script>
+{% endblock %}

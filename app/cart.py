@@ -72,15 +72,21 @@ def calcular_carrito(items):
     Aplica la lógica de promociones por cantidad sobre los items del carrito.
 
     Reglas:
-      - El % promocional (20/30/40) se aplica SOBRE `precio_ahora` (es decir,
-        sobre el precio que ya viene con el descuento original de la prenda).
-        Se ENCADENA con el descuento original (no se compara como antes).
+      - Los tramos (cuántos artículos dan cuánto %) y el modo de combinación
+        salen de la PLANTILLA de descuento activa, que el admin gestiona en
+        /admin/descuentos. Este archivo no los conoce: se los pregunta a
+        app/logicas_descuento.
+
+      - Modo ACUMULATIVO (encadenado): el % del tramo se aplica SOBRE
+        `precio_ahora`, o sea sobre el precio que ya viene con el descuento
+        original de la prenda, y los dos ahorros se suman.
 
           precio_final = precio_ahora * (1 - dcto_promo / 100)
 
-      - 2 items → 20% adicional sobre precio_ahora
-      - 3 items → 30% adicional sobre precio_ahora
-      - 4+ items → 40% adicional sobre precio_ahora
+      - Modo NO ACUMULATIVO: gana el MAYOR de los dos descuentos (el propio
+        de la prenda o el del tramo), nunca los dos a la vez.
+
+          precio_final = min(precio_ahora, precio_antes * (1 - dcto_promo / 100))
 
       - El "descuento total" mostrado al usuario es la diferencia porcentual
         entre `precio_final` y `precio_antes` (es decir, todo el ahorro
@@ -142,12 +148,23 @@ def calcular_carrito(items):
         # "no aplica" sí inflama el tier para los demás ítems.)
         promo_item = 0 if no_aplica_promo else dcto_promo
 
-        # El descuento promocional se aplica SOBRE precio_ahora
-        # (encadenado, no sustituye al original).
+        # Cómo se combina el % por cantidad con el descuento propio de la
+        # prenda lo decide la PLANTILLA ACTIVA, no este archivo:
+        #   acumulativo    -> encadenado sobre precio_ahora (los ahorros se suman)
+        #   no acumulativo -> gana el mayor de los dos descuentos
+        # Ver app/logicas_descuento.precio_con_descuento. El valor por
+        # defecto de `_ld_call` reproduce el comportamiento histórico
+        # (encadenado) para que el carrito no cambie si esa lógica falla.
         if promo_item > 0:
-            precio_final = int(round(precio_ahora * (100 - promo_item) / 100))
+            encadenado = int(round(precio_ahora * (100 - promo_item) / 100))
         else:
-            precio_final = precio_ahora
+            encadenado = precio_ahora
+
+        precio_final = _ld_call(
+            "precio_con_descuento", encadenado,
+            precio_antes, precio_ahora, promo_item,
+        )
+        precio_final = int(precio_final if precio_final is not None else encadenado)
 
         # Descuento total visible = diferencia porcentual entre precio_final
         # y precio_antes (original sin ningún descuento). Para ítems que no

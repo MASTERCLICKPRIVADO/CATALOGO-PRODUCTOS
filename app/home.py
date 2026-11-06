@@ -195,12 +195,45 @@ def filtrar_por_ciudad(df, ciudad):
     return df[df['Ciudad'].astype(str) == str(ciudad)]
 
 
+# Permisos que ven TODO el inventario (todas las ciudades y tiendas) en vez
+# de solo el de su ciudad. 'admin' hereda la visión de 'master' y le suma el
+# panel de descuentos (/admin/descuentos).
+PERMISOS_SCOPE_TOTAL = ("master", "admin")
+
+
+def permiso_en_sesion(request) -> str:
+    """Permiso cacheado en la cookie de sesión, normalizado a minúsculas."""
+    return str(request.session.get("permisos") or "").strip().lower()
+
+
 def es_master(request) -> bool:
     """
-    True si el usuario en sesión tiene permiso 'master': ve TODO el inventario
-    (todas las ciudades y tiendas), no solo el de su ciudad.
+    True si el usuario en sesión ve TODO el inventario (todas las ciudades y
+    tiendas), no solo el de su ciudad: permisos 'master' o 'admin'.
+
+    Ojo: esto lee la SESIÓN, que es lo correcto para las vistas de solo
+    lectura del catálogo. Para autorizar algo que MODIFICA datos, usa
+    `permisos_en_bd` (abajo), que pregunta a Postgres.
     """
-    return str(request.session.get("permisos") or "").strip().lower() == "master"
+    return permiso_en_sesion(request) in PERMISOS_SCOPE_TOTAL
+
+
+def permisos_en_bd(request) -> str:
+    """
+    Permiso REAL del usuario en sesión, leído de Postgres (no de la cookie).
+
+    `es_master` lee la sesión, que es suficiente para las vistas de SOLO
+    LECTURA del catálogo. Para una ruta que MODIFICA algo preguntamos a la
+    BD: así un permiso revocado deja de valer en el momento, sin esperar a
+    que el usuario vuelva a iniciar sesión.
+
+    Devuelve "" si no hay sesión o el usuario ya no existe.
+    """
+    usuario = request.session.get("user")
+    if not usuario:
+        return ""
+    datos = db.obtener_usuario(usuario) or {}
+    return str(datos.get("permisos") or "").strip().lower()
 
 
 def aplicar_scope_ciudad(request, df):
@@ -664,8 +697,18 @@ async def recargar_csv(request: Request):
     """
     Recarga el catálogo desde Supabase en memoria sin reiniciar el servidor.
     Útil cuando el inventario cambia desde fuera de la app.
-    Protegido por el middleware de sesión (requiere login).
+
+    Requiere permiso 'master' verificado contra la BD. El middleware de
+    sesión solo garantiza que hay un login, y /registro es abierto a
+    cualquiera con un código de referido válido: sin esta comprobación,
+    cualquier usuario registrado podría recargar el catálogo del servidor.
     """
+    if permisos_en_bd(request) != "master":
+        return JSONResponse(
+            status_code=403,
+            content={"ok": False, "mensaje": "No tienes permiso para recargar el catálogo."},
+        )
+
     try:
         nuevo_df = load_data()
         if nuevo_df.empty:

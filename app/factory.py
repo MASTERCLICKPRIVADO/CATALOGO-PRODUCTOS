@@ -4,8 +4,50 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
-from app import home, auth, cart, powerbi, db
+from dotenv import load_dotenv
+from app import home, auth, cart, powerbi, admin, db
+import os
 import re
+
+load_dotenv()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# CONFIGURACIÓN DE LA SESIÓN
+# ──────────────────────────────────────────────────────────────────────────
+# Clave con la que se FIRMA la cookie de sesión. Nunca va escrita en el
+# código: quien la conozca puede fabricarse una cookie con el usuario y los
+# permisos que quiera (por ejemplo `permisos: master`, que ve todo el
+# inventario de todas las ciudades). Se define en el entorno: en el `.env`
+# para local y como variable de entorno en Render.
+#
+# Para generar una nueva:
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+#
+# Si la cambias, todas las sesiones abiertas se invalidan y los usuarios
+# vuelven a /login una vez. Eso es normal y esperado.
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "Falta SECRET_KEY en el entorno. Genera una con "
+        '`python -c "import secrets; print(secrets.token_urlsafe(48))"` '
+        "y definela en tu .env (local) y en las variables de entorno de Render."
+    )
+
+# La cookie se marca `Secure` → el navegador solo la envía por HTTPS, así no
+# viaja en claro. Los navegadores actuales aceptan cookies `Secure` en
+# http://localhost, por lo que el desarrollo local funciona igual; si tu
+# entorno no lo hiciera, pon SESSION_COOKIE_SECURE=false en el .env.
+SESSION_COOKIE_SECURE = (
+    os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower()
+    not in ("false", "0", "no")
+)
+
+# Vida máxima de la sesión, en segundos (8 horas por defecto). Acota cuánto
+# sirve una cookie robada: pasado ese tiempo la firma caduca y hay que volver
+# a entrar. El marcador por pestaña de templates/base.html sigue cerrando la
+# sesión cuando se cierra el navegador, así que la experiencia no cambia.
+SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", "28800"))
 
 
 def format_currency(value):
@@ -82,7 +124,16 @@ def create_app():
         return response
 
     # Sesiones
-    app.add_middleware(SessionMiddleware, secret_key="una_clave_secreta_muy_segura", max_age=None)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=SECRET_KEY,
+        max_age=SESSION_MAX_AGE,
+        # `lax`: la cookie no se envía en peticiones POST que vengan de otro
+        # sitio, lo que corta los ataques CSRF más comunes contra los
+        # formularios de la app (login, carrito, reserva).
+        same_site="lax",
+        https_only=SESSION_COOKIE_SECURE,
+    )
 
     # Estáticos
     app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -92,6 +143,9 @@ def create_app():
     app.include_router(auth.router)
     app.include_router(cart.router)
     app.include_router(powerbi.router)
+    # Panel de admin (/admin/descuentos). Cada ruta del router exige el
+    # permiso 'admin' verificado contra la BD, no solo sesión.
+    app.include_router(admin.router)
 
     # Plantillas y filtros
     templates = Jinja2Templates(directory="templates")

@@ -12,6 +12,14 @@
                 <a href="/perfil" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
                     <span>👤</span> Perfil
                 </a>
+                {# Solo el admin ve este boton. Es cosmetico: la autorizacion de
+                   verdad esta en app/admin.py, que verifica el permiso contra
+                   la BD en cada peticion. #}
+                {% if (request.session.permisos or '')|lower == 'admin' %}
+                <a href="/admin/descuentos" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #6e7350; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                    <span>&#9881;</span> Descuentos
+                </a>
+                {% endif %}
                 <a href="/carrito" class="btn" style="position: relative; width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
                     <span>🛒</span> Orden
                     <span id="cart-badge"
