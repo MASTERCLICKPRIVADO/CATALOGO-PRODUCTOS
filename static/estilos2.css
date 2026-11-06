@@ -911,3 +911,43 @@ button:hover {
 * {
     max-width: 100%;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   INDICADOR DE CARGA
+   ──────────────────────────────────────────────────────────────────────
+   Ruedita que se mete dentro de un boton mientras se espera al servidor,
+   para que se vea que el clic SI entro y la pagina no quedo colgada.
+   Se pinta con `currentColor`, asi toma solo el color del texto del boton
+   y sirve igual en los verdes, en los rojos y en los de borde.
+   La pone y la quita MC.cargando() (ver templates/base.html).            */
+
+.girando {
+    display: inline-block;
+    width: 0.95em;
+    height: 0.95em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    vertical-align: -0.15em;
+    animation: mc-girar 0.6s linear infinite;
+}
+
+/* Separacion solo si ademas lleva texto al lado. */
+.girando + span,
+.girando + * {
+    margin-left: 0.5em;
+}
+
+@keyframes mc-girar {
+    to { transform: rotate(360deg); }
+}
+
+/* A quien le molesta el movimiento, se lo dejamos mucho mas lento en vez
+   de quitarlo: la señal de "esto esta trabajando" se sigue necesitando. */
+@media (prefers-reduced-motion: reduce) {
+    .girando { animation-duration: 2.4s; }
+}
+
+/* El cursor de "esto esta trabajando" NO se pone aqui: varios botones de la
+   app traen `cursor: pointer` en el atributo style, y lo de linea le gana a
+   cualquier regla de esta hoja. Lo pone MC.cargando() tambien en linea. */

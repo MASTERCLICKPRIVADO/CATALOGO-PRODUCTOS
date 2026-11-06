@@ -39,6 +39,59 @@
     })();
     </script>
 
+    <!--
+        Indicador de carga compartido.
+        Va en el <head> para que ya exista cuando cualquier página lo llame.
+        La ruedita (.girando) está en estilos2.css.
+    -->
+    <script>
+    window.MC = window.MC || {};
+    (function () {
+        /*
+          Mete una ruedita girando dentro del botón y lo bloquea mientras se
+          espera al servidor, para que se note que el clic sí entró.
+
+          Devuelve la función que lo deja como estaba. Si después de la
+          respuesta la página se recarga o navega, simplemente NO se llama:
+          así la ruedita sigue girando hasta que la página nueva aparece, en
+          vez de parpadear a "listo" un instante antes de irse.
+
+              const listo = MC.cargando(boton, 'Agregando...');
+              ...
+              listo();   // solo si nos quedamos en esta página
+        */
+        MC.cargando = function (boton, texto) {
+            if (!boton) return function () {};
+
+            var original = boton.innerHTML;
+            var cursorPrevio = boton.style.cursor;
+            var anchoPrevio = boton.offsetWidth;
+
+            boton.disabled = true;
+            boton.setAttribute('aria-busy', 'true');
+            // Fijamos el ancho que ya tenía para que no se encoja ni salte
+            // el resto de la fila al cambiarle el contenido.
+            if (anchoPrevio) boton.style.minWidth = anchoPrevio + 'px';
+            // En línea a propósito: varios botones traen `cursor: pointer`
+            // en su atributo style, y eso le gana a la hoja de estilos.
+            boton.style.cursor = 'progress';
+            boton.innerHTML = '<span class="girando"></span>' +
+                              (texto ? '<span>' + texto + '</span>' : '');
+
+            var yaRestaurado = false;
+            return function restaurar() {
+                if (yaRestaurado) return;   // llamarla dos veces no hace daño
+                yaRestaurado = true;
+                boton.disabled = false;
+                boton.removeAttribute('aria-busy');
+                boton.style.minWidth = '';
+                boton.style.cursor = cursorPrevio;
+                boton.innerHTML = original;
+            };
+        };
+    })();
+    </script>
+
     <link rel="stylesheet" href="{{ url_for('static', path='estilos2.css') }}">
 </head>
 <body>

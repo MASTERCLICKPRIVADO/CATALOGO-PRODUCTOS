@@ -8,8 +8,17 @@ a mano en app/logicas_descuento.py.
 
 El admin guarda varias PLANTILLAS ("Normal", "Navidad", "Black Friday"), cada
 una con sus tramos y con su propio modo acumulativo, y activa la que quiera.
-El carrito usa siempre la plantilla activa. Encima de todo hay un interruptor
-general para apagar la promoción sin perder ninguna plantilla.
+El carrito usa siempre la plantilla activa.
+
+ENCENDIDO Y APAGADO — y por qué hay que desactivar para tocar algo
+------------------------------------------------------------------
+Que haya o no una plantilla activa es lo único que enciende la promoción;
+no existe otro interruptor. Y mientras una está activa no se puede editar
+ni reemplazar por otra: primero se desactiva.
+
+Es un paso de más a propósito. Esto cambia el precio que ve el cliente en
+el momento, así que apagar la promoción y cambiarla son dos decisiones
+distintas, cada una con su confirmación, en vez de un resbalón.
 
 SEGURIDAD — cómo se autoriza esto
 ---------------------------------
@@ -60,9 +69,21 @@ MENSAJES = {
     "activada": "Plantilla activada: es la que se aplica en el carrito.",
     "duplicada": "Plantilla duplicada. La copia queda inactiva.",
     "borrada": "Plantilla borrada.",
-    "prendido": "Descuento por cantidad prendido.",
-    "apagado": "Descuento por cantidad apagado: ninguna plantilla se aplica.",
+    "desactivada": ("Promoción desactivada: ninguna plantilla se está "
+                    "aplicando y los artículos se cobran a su precio normal."),
 }
+
+
+def _candado_activa(nombre: str) -> str:
+    """
+    El mismo aviso en todos lados, para que no haya dos redacciones.
+
+    Mientras una plantilla está activa no se toca: ni se edita, ni se
+    reemplaza por otra. Primero se desactiva. Así nunca se le cambia el
+    precio por debajo a un cliente que ya tiene el carrito abierto.
+    """
+    return (f"«{nombre}» está activa en este momento. Desactiva la promoción "
+            f"antes de modificarla o de activar otra.")
 
 
 async def requiere_admin(request: Request):
@@ -213,8 +234,11 @@ def _render_lista(request: Request, *, error=None, msg=None):
     try:
         estado = db.listar_plantillas()
     except Exception as e:
-        estado = {"activo": True, "plantillas": []}
+        estado = {"activo": False, "plantillas": []}
         error = error or _error_bd(e)
+
+    activa = next((p for p in estado["plantillas"] if p["activa"]), None)
+    inactivas = [p for p in estado["plantillas"] if not p["activa"]]
 
     try:
         auditoria = db.obtener_auditoria_descuentos(limite=8)
@@ -228,6 +252,10 @@ def _render_lista(request: Request, *, error=None, msg=None):
         {
             "plantillas": estado["plantillas"],
             "descuento_activo": estado["activo"],
+            # La activa aparte: la pantalla la trata distinto (se anuncia
+            # arriba, no se puede editar y solo se le ofrece desactivar).
+            "plantilla_activa": activa,
+            "inactivas": inactivas,
             "error": error,
             "msg": msg,
             "auditoria": auditoria,
@@ -249,25 +277,25 @@ async def ver_descuentos(request: Request, msg: str = "", error: str = ""):
     return _render_lista(request, error=error or None, msg=MENSAJES.get(msg))
 
 
-@router.post("/descuentos/interruptor", dependencies=[Depends(requiere_admin)])
-async def cambiar_interruptor(request: Request, activo: str = Form("")):
-    """Prende o apaga TODA la promoción por cantidad."""
-    prendido = str(activo).strip() in ("1", "true", "on", "si")
-    clave = "prendido" if prendido else "apagado"
+@router.post("/descuentos/desactivar", dependencies=[Depends(requiere_admin)])
+async def desactivar(request: Request):
+    """
+    Apaga la promoción dejando todas las plantillas inactivas.
 
+    Es el paso obligatorio antes de editar la plantilla que está aplicándose
+    o de poner otra en su lugar.
+
+    Va por envío normal, no por fetch: al cambiar la promoción cambia media
+    pantalla, y recargarla una vez sale más barato que pedir JSON y después
+    recargar igual.
+    """
     try:
-        db.guardar_interruptor_general(prendido, str(request.session.get("user") or ""))
+        db.desactivar_plantillas(str(request.session.get("user") or ""))
     except Exception as e:
-        if _pide_json(request):
-            return JSONResponse({"ok": False, "error": _error_bd(e)})
         return _render_lista(request, error=_error_bd(e))
 
     logicas_descuento.invalidar_cache()
-
-    if _pide_json(request):
-        return JSONResponse({"ok": True, "activo": prendido, "msg": MENSAJES[clave]})
-
-    return RedirectResponse(url=f"/admin/descuentos?msg={clave}", status_code=303)
+    return RedirectResponse(url="/admin/descuentos?msg=desactivada", status_code=303)
 
 
 @router.post("/descuentos/plantillas/nueva", dependencies=[Depends(requiere_admin)])
@@ -294,28 +322,36 @@ async def crear_plantilla(request: Request, nombre: str = Form(""),
     )
 
 
-@router.post("/descuentos/plantillas/{plantilla_id}/activar",
-             dependencies=[Depends(requiere_admin)])
-async def activar_plantilla(request: Request, plantilla_id: int):
-    """Deja esta plantilla como la vigente (las demás quedan inactivas)."""
+@router.post("/descuentos/activar", dependencies=[Depends(requiere_admin)])
+async def activar_plantilla(request: Request, plantilla_id: str = Form("")):
+    """
+    Pone en marcha la plantilla que el admin eligió en el selector.
+
+    Solo se puede si NO hay ninguna activa: para cambiar de promoción hay
+    que desactivar primero. Es un paso de más a propósito, porque esto le
+    cambia el precio en el momento a quien tenga el carrito abierto.
+
+    Como `desactivar`, va por envío normal y termina en una recarga.
+    """
     try:
-        existe = db.activar_plantilla(plantilla_id, str(request.session.get("user") or ""))
+        elegida = int(str(plantilla_id).strip())
+    except ValueError:
+        return _render_lista(request, error="Elige una plantilla para activar.")
+
+    try:
+        estado = db.listar_plantillas()
+        activa = next((p for p in estado["plantillas"] if p["activa"]), None)
+        if activa:
+            return _render_lista(request, error=_candado_activa(activa["nombre"]))
+
+        existe = db.activar_plantilla(elegida, str(request.session.get("user") or ""))
     except Exception as e:
-        if _pide_json(request):
-            return JSONResponse({"ok": False, "error": _error_bd(e)})
         return _render_lista(request, error=_error_bd(e))
 
     if not existe:
-        if _pide_json(request):
-            return JSONResponse({"ok": False, "error": "Esa plantilla ya no existe."})
         return _render_lista(request, error="Esa plantilla ya no existe.")
 
     logicas_descuento.invalidar_cache()
-
-    if _pide_json(request):
-        return JSONResponse({"ok": True, "plantilla_id": plantilla_id,
-                             "msg": MENSAJES["activada"]})
-
     return RedirectResponse(url="/admin/descuentos?msg=activada", status_code=303)
 
 
@@ -414,8 +450,27 @@ async def ver_plantilla(request: Request, plantilla_id: int, msg: str = ""):
 @router.post("/descuentos/plantillas/{plantilla_id}",
              dependencies=[Depends(requiere_admin)])
 async def guardar_plantilla(request: Request, plantilla_id: int):
-    """Guarda nombre, modo acumulativo y tramos. No cambia cuál está activa."""
+    """
+    Guarda nombre, modo acumulativo y tramos. No cambia cuál está activa.
+
+    Se niega si la plantilla está activa: primero hay que desactivarla. Este
+    es el candado de verdad, el del servidor; que la pantalla además esconda
+    el formulario es solo cortesía.
+    """
     formulario = await request.form()
+
+    try:
+        actual = db.obtener_plantilla(plantilla_id)
+    except Exception as e:
+        if _pide_json(request):
+            return JSONResponse({"ok": False, "error": _error_bd(e)})
+        return _render_lista(request, error=_error_bd(e))
+
+    if actual and actual["activa"]:
+        mensaje = _candado_activa(actual["nombre"])
+        if _pide_json(request):
+            return JSONResponse({"ok": False, "error": mensaje})
+        return _render_editor(request, plantilla=actual, error=mensaje)
 
     acumulativo = str(formulario.get("acumulativo") or "").strip() != ""
     nombre, error_nombre = validar_nombre(formulario.get("nombre"))
@@ -434,13 +489,8 @@ async def guardar_plantilla(request: Request, plantilla_id: int):
 
     if error:
         # Re-dibujamos con lo que el admin acababa de escribir, para que no
-        # tenga que volver a tipearlo.
-        try:
-            actual = db.obtener_plantilla(plantilla_id) or {}
-        except Exception as e:
-            return _render_lista(request, error=_error_bd(e))
-
-        tecleado = dict(actual)
+        # tenga que volver a tipearlo. `actual` ya se leyó arriba.
+        tecleado = dict(actual or {})
         tecleado.update({
             "nombre": str(formulario.get("nombre") or ""),
             "acumulativo": acumulativo,

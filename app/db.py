@@ -669,18 +669,19 @@ def obtener_set_ids_excluidos(id_promocion):
 # con su propio modo acumulativo. Exactamente una puede estar activa (lo
 # garantiza un índice único parcial) y el carrito usa esa.
 #
-# `config_descuentos` es el interruptor general: apaga la promoción sin
-# desactivar ni perder la plantilla.
+# QUÉ ENCIENDE Y APAGA LA PROMOCIÓN
+# ---------------------------------
+# Que haya o no una plantilla activa. No hay otro interruptor: si ninguna
+# plantilla está activa, no hay descuento por cantidad y los artículos se
+# cobran a su precio normal.
+#
+# Antes existía un interruptor general aparte, en `config_descuentos`. Se
+# quitó porque eran dos estados para decir lo mismo y se podía quedar
+# apagado sin que se notara en pantalla. Esa tabla ya no se lee; sigue en
+# la base de datos sin uso.
 #
 # Ver migraciones/migracion_descuentos.sql, migraciones/migracion_plantillas.sql
 # y app/logicas_descuento.py.
-
-
-def _interruptor_general(cur) -> bool:
-    """Lee el interruptor general con un cursor ya abierto."""
-    cur.execute("SELECT activo FROM config_descuentos WHERE id IS TRUE")
-    fila = cur.fetchone()
-    return True if fila is None else bool(fila["activo"])
 
 
 def _auditar(cur, usuario: str, accion: str, detalle: dict):
@@ -700,23 +701,21 @@ def obtener_descuentos_vigentes() -> dict:
          "reglas": [(min_items, porcentaje), ...]}
 
     Sale de la plantilla ACTIVA y solo con sus tramos activos, ya ordenados.
-    Si no hay ninguna plantilla activa, `reglas` viene vacío: no hay promoción
-    configurada y el carrito no aplica descuento por cantidad.
+    `activo` es simplemente si hay una plantilla activa: si no la hay, no hay
+    promoción y el carrito no aplica descuento por cantidad.
 
     Lanza excepción si la BD no responde: quien llama (app/logicas_descuento)
     decide qué hacer, y lo que hace es caer a los tramos de respaldo del código.
     """
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            activo = _interruptor_general(cur)
-
             cur.execute(
                 "SELECT id, nombre, acumulativo FROM plantillas_descuento WHERE activa LIMIT 1"
             )
             plantilla = cur.fetchone()
 
             if not plantilla:
-                return {"activo": activo, "acumulativo": True,
+                return {"activo": False, "acumulativo": True,
                         "plantilla": None, "reglas": []}
 
             cur.execute(
@@ -729,7 +728,7 @@ def obtener_descuentos_vigentes() -> dict:
             reglas = [(int(r["min_items"]), int(r["porcentaje"])) for r in cur.fetchall()]
 
     return {
-        "activo": activo,
+        "activo": True,
         "acumulativo": bool(plantilla["acumulativo"]),
         "plantilla": plantilla["nombre"],
         "reglas": reglas,
@@ -743,13 +742,13 @@ def listar_plantillas() -> dict:
         {"activo": bool, "plantillas": [{id, nombre, acumulativo, activa,
                                          reglas: [{min_items, porcentaje, activo}]}]}
 
+    `activo` es si hay una plantilla activa, o sea si hay promoción en pie.
+
     Incluye los tramos pausados, porque el admin tiene que verlos para poder
     volver a prenderlos. La activa va primero.
     """
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            activo = _interruptor_general(cur)
-
             cur.execute(
                 """SELECT id, nombre, acumulativo, activa, actualizado_por, actualizado_en
                      FROM plantillas_descuento
@@ -775,7 +774,10 @@ def listar_plantillas() -> dict:
         plantilla["activa"] = bool(plantilla["activa"])
         plantilla["reglas"] = por_plantilla.get(plantilla["id"], [])
 
-    return {"activo": activo, "plantillas": plantillas}
+    return {
+        "activo": any(p["activa"] for p in plantillas),
+        "plantillas": plantillas,
+    }
 
 
 def obtener_plantilla(plantilla_id: int):
@@ -995,22 +997,31 @@ def borrar_plantilla(plantilla_id: int, usuario: str) -> bool:
     return True
 
 
-def guardar_interruptor_general(activo: bool, usuario: str):
-    """Prende o apaga TODA la promoción por cantidad, sin tocar las plantillas."""
+def desactivar_plantillas(usuario: str):
+    """
+    Apaga la promoción: deja todas las plantillas inactivas.
+
+    Devuelve el nombre de la que estaba activa, o None si no había ninguna.
+    Es el único "apagado" que existe; no se pierde ninguna plantilla, solo
+    dejan de aplicarse hasta que se active una otra vez.
+    """
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            antes = _interruptor_general(cur)
+            cur.execute("SELECT id, nombre FROM plantillas_descuento WHERE activa")
+            antes = cur.fetchone()
+            if not antes:
+                return None
+
             cur.execute(
-                """INSERT INTO config_descuentos (id, activo, actualizado_por, actualizado_en)
-                   VALUES (true, %s, %s, %s)
-                   ON CONFLICT (id) DO UPDATE
-                      SET activo = EXCLUDED.activo,
-                          actualizado_por = EXCLUDED.actualizado_por,
-                          actualizado_en = EXCLUDED.actualizado_en""",
-                (bool(activo), str(usuario), hora_bogota_para_guardar()),
+                """UPDATE plantillas_descuento
+                      SET activa = false, actualizado_por = %s, actualizado_en = %s
+                    WHERE activa""",
+                (str(usuario), hora_bogota_para_guardar()),
             )
-            _auditar(cur, usuario, "interruptor_general",
-                     {"antes": antes, "despues": bool(activo)})
+            _auditar(cur, usuario, "desactivar_plantilla",
+                     {"antes": dict(antes), "despues": None})
+
+    return antes["nombre"]
 
 
 def obtener_auditoria_descuentos(limite: int = 10):

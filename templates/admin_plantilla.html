@@ -7,8 +7,8 @@
 {% if plantilla.activa %}
 <p style="font-size: 13px; color: #8d6e00; background: #fff8e1; padding: 12px;
           border-radius: 12px; margin-top: 15px;">
-  Esta plantilla está <strong>activa</strong>: lo que guardes se aplica de
-  inmediato en el carrito de todos los usuarios.
+  Esta plantilla está <strong>activa</strong>, así que solo se puede mirar.
+  Para cambiarle algo, desactiva la promoción en la lista de plantillas.
 </p>
 {% else %}
 <p style="font-size: 13px; color: #666; margin-top: 15px;">
@@ -63,7 +63,8 @@
 <section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
   <div style="max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
 
-    <a href="/admin/descuentos" style="color: #8a8f64; font-size: 13px; text-decoration: none;">
+    <a href="/admin/descuentos" id="volver"
+       style="color: #8a8f64; font-size: 13px; text-decoration: none;">
       &larr; Volver a las plantillas
     </a>
 
@@ -89,6 +90,24 @@
       {% endfor %}
     </div>
 
+    {% if plantilla.activa %}
+    <!-- Solo lectura. El candado de verdad está en el servidor
+         (app/admin.py rechaza guardar una plantilla activa); esto evita
+         que alguien pierda el tiempo escribiendo cambios que no entrarían. -->
+    <div class="caja-aviso caja-ojo" style="display: flex; gap: 16px;
+                align-items: center; justify-content: space-between; flex-wrap: wrap;">
+      <span>
+        <strong>Esta plantilla está en uso ahora mismo.</strong><br>
+        Puedes mirarla, pero no cambiarla. Desactiva la promoción y vuelve.
+      </span>
+      <a href="/admin/descuentos" class="btn"
+         style="width: auto; padding: 10px 20px; background: #8d6e00;
+                text-decoration: none; white-space: nowrap;">
+        Ir a desactivarla
+      </a>
+    </div>
+    {% endif %}
+
     <form method="post" action="/admin/descuentos/plantillas/{{ plantilla.id }}"
           id="form-plantilla" style="margin-top: 25px;">
 
@@ -97,6 +116,7 @@
                     font-weight: bold; margin-bottom: 6px;">Nombre de la plantilla</label>
       <input type="text" name="nombre" id="campo-nombre" value="{{ plantilla.nombre }}"
              maxlength="{{ max_largo_nombre }}" required
+             {% if plantilla.activa %}disabled{% endif %}
              style="width: 100%; max-width: 420px; padding: 11px; border: 1px solid #ddd;
                     border-radius: 10px;">
 
@@ -118,20 +138,24 @@
           <div class="campos">
             <label>Desde esta cantidad de prendas
               <input type="number" name="min_items" value="{{ regla.min_items }}"
-                     min="1" max="{{ min_items_max }}" step="1" placeholder="2">
+                     min="1" max="{{ min_items_max }}" step="1" placeholder="2"
+                     {% if plantilla.activa %}disabled{% endif %}>
             </label>
             <span class="flecha">&rarr;</span>
             <label>% de descuento
               <input type="number" name="porcentaje" value="{{ regla.porcentaje }}"
-                     min="0" max="{{ porcentaje_max }}" step="1" placeholder="15">
+                     min="0" max="{{ porcentaje_max }}" step="1" placeholder="15"
+                     {% if plantilla.activa %}disabled{% endif %}>
             </label>
             <label>Estado
-              <select name="activo">
+              <select name="activo" {% if plantilla.activa %}disabled{% endif %}>
                 <option value="1" {% if regla.activo %}selected{% endif %}>Activo</option>
                 <option value="0" {% if not regla.activo %}selected{% endif %}>Pausado</option>
               </select>
             </label>
+            {% if not plantilla.activa %}
             <button type="button" class="quitar-fila" title="Quitar este tramo">&times;</button>
+            {% endif %}
           </div>
           <p class="eco"></p>
         </div>
@@ -166,11 +190,13 @@
         Sin tramos llenos: esta plantilla no aplicaría ningún descuento por cantidad.
       </p>
 
+      {% if not plantilla.activa %}
       <button type="button" id="agregar-tramo"
               style="margin-top: 12px; background: none; border: 1px dashed #8a8f64;
                      color: #8a8f64; padding: 10px 18px; border-radius: 12px; cursor: pointer;">
         + Agregar tramo
       </button>
+      {% endif %}
 
       <!-- Cómo se combina con el descuento propio de la prenda -->
       <h3 style="color: #8a8f64; margin: 34px 0 10px;">Si la prenda ya trae descuento</h3>
@@ -178,6 +204,7 @@
                     padding: 16px 20px; border-radius: 16px; cursor: pointer;">
         <input type="checkbox" name="acumulativo" value="1" id="acumulativo"
                {% if plantilla.acumulativo %}checked{% endif %}
+               {% if plantilla.activa %}disabled{% endif %}
                style="width: 20px; height: 20px; accent-color: #8a8f64; margin-top: 2px;">
         <span>
           <strong style="color: #333;">Acumular con el descuento de la prenda</strong>
@@ -220,7 +247,9 @@
         <div id="simulador" style="display: flex; gap: 10px; flex-wrap: wrap;"></div>
       </div>
 
-      <!-- Guardar -->
+      <!-- Guardar. No se ofrece si la plantilla está en uso: ahí esto es
+           una pantalla de solo lectura. -->
+      {% if not plantilla.activa %}
       <div style="display: flex; gap: 15px; margin-top: 32px; flex-wrap: wrap; align-items: center;">
         <button type="submit" id="btn-guardar" class="btn"
                 style="background: #8a8f64; width: auto; padding: 12px 28px;">
@@ -232,6 +261,7 @@
         </button>
         <span id="estado-form" style="font-size: 13px; color: #b38600;"></span>
       </div>
+      {% endif %}
     </form>
 
   </div>
@@ -260,6 +290,11 @@
   var maxTramos = {{ max_tramos }};
   var maxPct    = {{ porcentaje_max }};
   var maxItems  = {{ min_items_max }};
+
+  // Si la plantilla está en uso, esta pantalla es solo para mirar: no se
+  // dibujan los botones de guardar, descartar ni agregar tramo. La vista
+  // previa sí se pinta, que para eso se entra a verla.
+  var soloLectura = {{ 'true' if plantilla.activa else 'false' }};
 
   // Estado confirmado por el servidor, para que "Descartar" no tenga que
   // pedirle nada y vuelva al instante.
@@ -423,6 +458,7 @@
   }
 
   function revisarSucio() {
+    if (soloLectura) return;
     sucio = instantanea() !== guardado;
     estadoForm.textContent = sucio ? 'Hay cambios sin guardar.' : '';
   }
@@ -465,8 +501,8 @@
 
   // ── Guardar sin recargar la página ──────────────────────────────────
   function guardar() {
-    btnGuardar.disabled = true;
-    btnGuardar.textContent = 'Guardando...';
+    // Ruedita girando: guardar va contra Supabase y puede tardar.
+    var listo = MC.cargando(btnGuardar, 'Guardando...');
     mostrar(cajaError, '');
     mostrar(cajaMsg, '');
     mostrarAvisos([]);
@@ -482,9 +518,8 @@
         return r.json();
       })
       .then(function (d) {
-        btnGuardar.disabled = false;
+        listo();
         if (!d.ok) {
-          btnGuardar.textContent = 'Guardar cambios';
           mostrar(cajaError, d.error || 'No se pudo guardar.');
           return;
         }
@@ -505,6 +540,23 @@
   }
 
   // ── Eventos ─────────────────────────────────────────────────────────
+  // "Volver a las plantillas" navega, así que también lleva su ruedita.
+  var volver = document.getElementById('volver');
+  if (volver) {
+    volver.addEventListener('click', function () {
+      setTimeout(function () {
+        volver.style.pointerEvents = 'none';
+        MC.cargando(volver, 'Volviendo...');
+      }, 0);
+    });
+  }
+
+  if (soloLectura) {
+    // Nada que editar: solo pintamos la vista previa y salimos.
+    pintar();
+    return;
+  }
+
   document.getElementById('agregar-tramo').addEventListener('click', function () {
     if (filas().length >= maxTramos) {
       mostrar(cajaError, 'El máximo es ' + maxTramos + ' tramos.');

@@ -491,8 +491,9 @@
                 carritoFeedback.style.color = '#c62828';
                 return;
             }
-            btnAgregar.disabled = true;
-            btnAgregar.textContent = 'Agregando...';
+            // Ruedita girando dentro del botón: el servidor puede tardar y
+            // sin esto no se nota que el clic entró.
+            const listo = MC.cargando(btnAgregar, 'Agregando...');
             carritoFeedback.textContent = '';
 
             try {
@@ -531,8 +532,8 @@
                 carritoFeedback.textContent = '❌ Error de conexión.';
                 carritoFeedback.style.color = '#c62828';
             } finally {
-                btnAgregar.disabled = false;
-                btnAgregar.textContent = '🛒 Agregar a la orden';
+                // Nos quedamos en esta página, así que devolvemos el botón.
+                listo();
             }
         });
 

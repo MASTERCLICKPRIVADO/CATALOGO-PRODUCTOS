@@ -307,8 +307,10 @@
     document.querySelectorAll('.btn-eliminar').forEach(btn => {
         btn.addEventListener('click', async () => {
             const itemId = btn.dataset.itemId;
-            btn.disabled = true;
-            btn.textContent = 'Eliminando...';
+            // Al eliminar se recarga la página para recalcular los totales,
+            // así que la ruedita se queda girando hasta que llegue la nueva:
+            // solo llamamos a `listo()` si el borrado falló y nos quedamos.
+            const listo = MC.cargando(btn, 'Eliminando...');
 
             try {
                 const fd = new FormData();
@@ -335,13 +337,11 @@
                     }
                 } else {
                     mostrarMsg(data.mensaje || 'No se pudo eliminar.', false);
-                    btn.disabled = false;
-                    btn.textContent = 'Eliminar';
+                    listo();
                 }
             } catch {
                 mostrarMsg('Error de conexión.', false);
-                btn.disabled = false;
-                btn.textContent = 'Eliminar';
+                listo();
             }
         });
     });
@@ -350,8 +350,9 @@
     if (btnVaciar) {
         btnVaciar.addEventListener('click', async () => {
             if (!confirm('¿Vaciar todo el Reserva?')) return;
-            btnVaciar.disabled = true;
-            btnVaciar.textContent = 'Vaciando...';
+            // Igual que al eliminar: si sale bien, la página se recarga y la
+            // ruedita sigue girando hasta entonces.
+            const listo = MC.cargando(btnVaciar, 'Vaciando...');
 
             try {
                 const resp = await fetch('/carrito/vaciar', { method: 'POST' });
@@ -360,13 +361,11 @@
                     window.location.reload();
                 } else {
                     mostrarMsg(data.mensaje || 'No se pudo vaciar.', false);
-                    btnVaciar.disabled = false;
-                    btnVaciar.textContent = 'Vaciar Reserva';
+                    listo();
                 }
             } catch {
                 mostrarMsg('Error de conexión.', false);
-                btnVaciar.disabled = false;
-                btnVaciar.textContent = 'Vaciar Reserva';
+                listo();
             }
         });
     }

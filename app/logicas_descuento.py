@@ -14,8 +14,9 @@ En la página, desde el panel del admin:  /admin/descuentos
 
 El admin guarda varias PLANTILLAS ("Normal", "Navidad", "Black Friday") en la
 tabla `plantillas_descuento`, cada una con sus tramos en `reglas_descuento` y
-con su propio modo acumulativo, y activa la que quiera; el interruptor general
-vive en `config_descuentos`. Ya no hace falta editar este archivo ni volver a
+con su propio modo acumulativo, y activa la que quiera. Que haya o no una
+plantilla activa es lo único que enciende o apaga la promoción: no hay otro
+interruptor. Ya no hace falta editar este archivo ni volver a
 desplegar para cambiar un porcentaje: el admin lo hace desde el navegador y el
 cambio se ve en el carrito en cuestión de segundos.
 
@@ -35,9 +36,9 @@ algo razonable en vez de quedarse sin promoción en plena venta.
 
 Dos cosas importantes:
 
-  • Si la BD responde con CERO tramos (porque el admin los borró o apagó el
-    interruptor), eso es una respuesta válida: NO se usa el respaldo y el
-    carrito trabaja sin descuento por cantidad. Apagar es apagar.
+  • Si la BD responde con CERO tramos (porque el admin desactivó la
+    promoción o borró los tramos), eso es una respuesta válida: NO se usa
+    el respaldo y el carrito trabaja sin descuento. Apagar es apagar.
   • El respaldo solo entra en juego cuando la consulta FALLA (BD caída, red,
     tabla que aún no existe porque falta correr la migración).
 
@@ -139,8 +140,8 @@ def _estado():
 def _reglas():
     """Tramos vigentes ordenados de menor a mayor cantidad.
 
-    Devuelve [] si el interruptor general está apagado o si no hay ningún
-    tramo configurado → descuento por cantidad apagado.
+    Devuelve [] si no hay ninguna plantilla activa o si la activa no tiene
+    tramos → descuento por cantidad apagado.
     """
     estado = _estado()
     if not estado["activo"]:
