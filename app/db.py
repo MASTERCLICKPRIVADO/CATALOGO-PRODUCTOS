@@ -1024,6 +1024,19 @@ def desactivar_plantillas(usuario: str):
     return antes["nombre"]
 
 
+def auditar_accion(usuario: str, accion: str, detalle: dict):
+    """
+    Deja constancia de algo que hizo el admin desde el panel.
+
+    Es la versión pública de `_auditar`, para lo que no cambia plantillas
+    pero sí pasa por esta pantalla (por ejemplo reemplazar el banner de
+    promoción) y conviene que quede en el mismo historial.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            _auditar(cur, usuario, accion, detalle)
+
+
 def obtener_auditoria_descuentos(limite: int = 10):
     """Últimos cambios de descuentos, del más reciente al más antiguo."""
     with _get_conn() as conn:

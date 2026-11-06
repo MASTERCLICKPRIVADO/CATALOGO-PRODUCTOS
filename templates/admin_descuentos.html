@@ -289,6 +289,74 @@
       </p>
     </form>
 
+    <!-- ── Imagen de la promoción ─────────────────────────────────────── -->
+    <h3 style="color: #8a8f64; margin: 40px 0 6px;">Imagen de la promoción</h3>
+    <p style="font-size: 13px; color: #777; margin: 0 0 14px;">
+      El banner que sale en la página de inicio. Es <strong>una sola
+      imagen</strong>: la que subas reemplaza a la de ahora, no se guardan
+      copias. JPG, PNG o WEBP, hasta {{ promo_max_mb }} MB.
+    </p>
+
+    {% if promo_no_disponible %}
+    <div class="caja-aviso caja-ojo" style="margin-top: 0;">
+      <strong>No se puede subir todavía.</strong><br>
+      {{ promo_no_disponible }}
+    </div>
+    {% endif %}
+
+    <div style="border: 1px solid #eee; border-radius: 18px; padding: 20px 22px;
+                background: #fafaf7; display: flex; gap: 24px; flex-wrap: wrap;">
+
+      <div style="flex: 0 0 240px;">
+        <p style="font-size: 11px; color: #999; text-transform: uppercase;
+                  font-weight: bold; margin: 0 0 8px;">La que está puesta</p>
+        <img src="{{ promo_image_url }}" alt="Imagen de promoción actual"
+             style="width: 240px; border-radius: 12px; border: 1px solid #e5e5e0;
+                    display: block; background: white;"
+             onerror="this.style.display='none';
+                      document.getElementById('sin-imagen').style.display='block';">
+        <p id="sin-imagen" style="display: none; font-size: 13px; color: #999;
+                  font-style: italic; margin: 0;">
+          Ahora mismo no se puede ver ninguna imagen en esa dirección.
+        </p>
+      </div>
+
+      <form method="post" action="/admin/descuentos/promocion"
+            enctype="multipart/form-data" id="form-promocion"
+            style="flex: 1; min-width: 260px; margin: 0;">
+        <p style="font-size: 11px; color: #999; text-transform: uppercase;
+                  font-weight: bold; margin: 0 0 8px;">Subir una nueva</p>
+
+        <input type="file" name="imagen" id="archivo-promocion" required
+               accept="image/jpeg,image/png,image/webp"
+               {% if promo_no_disponible %}disabled{% endif %}
+               style="display: block; width: 100%; padding: 11px;
+                      border: 1px dashed #bbb; border-radius: 10px;
+                      background: white; font-size: 14px;">
+
+        <!-- Vista previa de lo elegido, antes de subir nada -->
+        <div id="previo-promocion" style="display: none; margin-top: 14px;">
+          <p style="font-size: 11px; color: #999; text-transform: uppercase;
+                    font-weight: bold; margin: 0 0 8px;">Así quedaría</p>
+          <img id="previo-img" alt="Vista previa"
+               style="width: 240px; border-radius: 12px; border: 2px solid #8a8f64;
+                      display: block; background: white;">
+          <p id="previo-datos" style="font-size: 12px; color: #777; margin: 8px 0 0;"></p>
+        </div>
+
+        <button type="submit" class="btn" id="btn-promocion"
+                {% if promo_no_disponible %}disabled{% endif %}
+                style="width: auto; padding: 12px 26px; margin-top: 16px;
+                       background: #8a8f64;">
+          Reemplazar imagen
+        </button>
+        <p style="font-size: 12px; color: #888; margin: 12px 0 0;">
+          Te pedirá confirmación. En cuanto aceptes, la imagen vieja se pierde
+          y todos los visitantes ven la nueva.
+        </p>
+      </form>
+    </div>
+
     <!-- ── Auditoría ──────────────────────────────────────────────────── -->
     {% if auditoria %}
     <h3 style="color: #8a8f64; margin: 40px 0 4px;">Últimos cambios</h3>
@@ -311,6 +379,9 @@
             Editó «{{ registro.detalle.despues.nombre if registro.detalle and registro.detalle.despues else '?' }}»
           {% elif registro.accion == 'borrar_plantilla' %}
             Borró «{{ registro.detalle.plantilla.nombre if registro.detalle and registro.detalle.plantilla else '?' }}»
+          {% elif registro.accion == 'imagen_promocion' %}
+            Reemplazó la imagen de la promoción
+            {%- if registro.detalle and registro.detalle.archivo %} ({{ registro.detalle.archivo }}){% endif %}
           {# El interruptor general ya no existe, pero quedan registros
              viejos suyos en la auditoría y hay que saber leerlos. #}
           {% elif registro.accion == 'interruptor_general' %}
@@ -381,6 +452,47 @@
         return;
       }
       alNavegar(formDesactivar.querySelector('button'), 'Desactivando...');
+    });
+  }
+
+  // ── Imagen de promoción: vista previa y confirmación ────────────────
+  var campoImagen = document.getElementById('archivo-promocion');
+  var formPromo   = document.getElementById('form-promocion');
+  var MAX_MB      = {{ promo_max_mb }};
+
+  if (campoImagen && formPromo) {
+    var previo     = document.getElementById('previo-promocion');
+    var previoImg  = document.getElementById('previo-img');
+    var previoDato = document.getElementById('previo-datos');
+
+    campoImagen.addEventListener('change', function () {
+      var archivo = campoImagen.files && campoImagen.files[0];
+      if (!archivo) {
+        previo.style.display = 'none';
+        return;
+      }
+      // Mostrarla antes de subir evita el error tonto de mandar la foto
+      // equivocada, que aquí no tiene vuelta atrás.
+      previoImg.src = URL.createObjectURL(archivo);
+      var mb = archivo.size / 1024 / 1024;
+      previoDato.textContent = archivo.name + ' — ' + mb.toFixed(1) + ' MB';
+      previoDato.style.color = mb > MAX_MB ? '#c62828' : '#777';
+      if (mb > MAX_MB) {
+        previoDato.textContent += ' (pasa de ' + MAX_MB + ' MB, el servidor la va a rechazar)';
+      }
+      previo.style.display = '';
+    });
+
+    formPromo.addEventListener('submit', function (e) {
+      var archivo = campoImagen.files && campoImagen.files[0];
+      if (!archivo) return;    // el `required` ya se encarga
+      if (!confirm('¿Reemplazar la imagen de la promoción por «' + archivo.name +
+                   '»?\n\nLa imagen actual se pierde y todos los visitantes ' +
+                   'ven la nueva.')) {
+        e.preventDefault();
+        return;
+      }
+      alNavegar(document.getElementById('btn-promocion'), 'Subiendo...');
     });
   }
 

@@ -1,6 +1,5 @@
 import os
 import re
-import time
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -8,6 +7,9 @@ from fastapi.encoders import jsonable_encoder
 import pandas as pd
 
 from app import db
+# El banner de promoción (leerlo y reemplazarlo) vive en su propio módulo.
+# Se reexporta aquí porque las vistas de abajo lo usan con este nombre.
+from app.imagen_promocion import get_promo_image_url
 
 router = APIRouter()
 
@@ -34,27 +36,6 @@ def _clave_orden_talla(grupo: dict):
         return (1, float(etiqueta.replace(",", ".")), etiqueta)
     except ValueError:
         return (2, 0, etiqueta)
-
-
-def get_promo_image_url() -> str:
-    """
-    Construye la URL pública del banner de promoción almacenado en Supabase
-    Storage. Estructura: <SUPABASE_URL>/storage/v1/object/public/<bucket>/static/<file>.
-
-    Se agrega un cache-buster `?t=<timestamp>` para que, al actualizar la
-    imagen en Supabase, el navegador la traiga al instante sin tener que
-    hacer hard-refresh. (La imagen de promoción es ligera, no nos preocupa
-    el extra de no cachearla.)
-
-    Si faltara SUPABASE_URL (entorno mal configurado), caemos a la imagen
-    local en /static como fallback para no romper la home.
-    """
-    base = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-    bucket = (os.getenv("SUPABASE_STORAGE_BUCKET") or "static").strip("/")
-    file_name = (os.getenv("SUPABASE_PROMO_FILE") or "promocion.jpg").lstrip("/")
-    if not base:
-        return f"/static/img/{file_name}"
-    return f"{base}/storage/v1/object/public/{bucket}/{file_name}?t={int(time.time())}"
 
 
 def get_imagen_url(referencia) -> str:

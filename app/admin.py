@@ -42,11 +42,12 @@ SEGURIDAD — cómo se autoriza esto
    nuevo. Esto toca el precio que ve el cliente: tiene que quedar rastro.
 """
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app import db
 from app import home
+from app import imagen_promocion
 from app import logicas_descuento
 
 router = APIRouter(prefix="/admin")
@@ -71,6 +72,8 @@ MENSAJES = {
     "borrada": "Plantilla borrada.",
     "desactivada": ("Promoción desactivada: ninguna plantilla se está "
                     "aplicando y los artículos se cobran a su precio normal."),
+    "imagen": ("Imagen de promoción reemplazada. Ya se ve en la página de "
+               "inicio; si la sigues viendo vieja, recarga."),
 }
 
 
@@ -261,6 +264,12 @@ def _render_lista(request: Request, *, error=None, msg=None):
             "auditoria": auditoria,
             "origen": logicas_descuento.origen_de_las_reglas(),
             "max_largo_nombre": MAX_LARGO_NOMBRE,
+            # Banner de la home: la imagen que hay puesta y, si la subida
+            # no está configurada, el motivo, para decirlo antes y no
+            # después de que elija el archivo.
+            "promo_image_url": imagen_promocion.get_promo_image_url(),
+            "promo_no_disponible": imagen_promocion.motivo_no_disponible(),
+            "promo_max_mb": imagen_promocion.MAX_BYTES // 1024 // 1024,
         },
     )
 
@@ -296,6 +305,50 @@ async def desactivar(request: Request):
 
     logicas_descuento.invalidar_cache()
     return RedirectResponse(url="/admin/descuentos?msg=desactivada", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# IMAGEN DE PROMOCIÓN
+# ──────────────────────────────────────────────────────────────────────────
+
+@router.post("/descuentos/promocion", dependencies=[Depends(requiere_admin)])
+async def subir_imagen_promocion(request: Request,
+                                 imagen: UploadFile = File(None)):
+    """
+    Reemplaza el banner de la página de inicio.
+
+    Es UNA sola imagen: la nueva pisa la anterior, no se acumulan. La
+    validación de verdad (que sea una imagen, y de qué tipo) se hace
+    mirando los bytes en app/imagen_promocion.py, no la extensión ni el
+    Content-Type, que los escribe quien sube el archivo.
+
+    Se lee con tope para que un archivo enorme no se cargue entero en
+    memoria solo para acabar rechazándolo.
+    """
+    tope = imagen_promocion.MAX_BYTES + 1
+    datos = await imagen.read(tope) if imagen is not None else b""
+
+    tipo, error = imagen_promocion.validar(datos)
+    if error:
+        return _render_lista(request, error=error)
+
+    ok, error = imagen_promocion.subir(datos, tipo)
+    if not ok:
+        return _render_lista(request, error=error)
+
+    # La imagen ya está puesta: si la auditoría falla, se avisa por consola
+    # pero no se le dice al admin que la subida salió mal, porque salió bien.
+    try:
+        db.auditar_accion(
+            str(request.session.get("user") or ""),
+            "imagen_promocion",
+            {"archivo": getattr(imagen, "filename", "") or "",
+             "tipo": tipo, "bytes": len(datos)},
+        )
+    except Exception as e:
+        print(f"⚠️  No se pudo auditar el cambio de imagen de promoción: {e}")
+
+    return RedirectResponse(url="/admin/descuentos?msg=imagen", status_code=303)
 
 
 @router.post("/descuentos/plantillas/nueva", dependencies=[Depends(requiere_admin)])
