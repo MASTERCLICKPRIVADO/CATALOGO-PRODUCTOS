@@ -98,8 +98,29 @@ header.nav-hidden {
 
 nav {
     display: flex;
+    align-items: center;
     gap: 15px;
 }
+
+/* Botones del navbar (Perfil, Descuentos, Orden).
+   Antes estos estilos iban REPETIDOS en el atributo style de cada enlace
+   en navbar.html, y eso impedia ajustarlos en movil: lo de linea le gana
+   a cualquier regla de esta hoja, incluidas las de @media. */
+.nav-btn {
+    width: auto;                 /* `button, .btn` pone width: 100% */
+    padding: 8px 15px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.nav-btn--admin { background: #6e7350; }
+
+/* El contador del carrito se posiciona contra este boton. */
+.nav-btn--carrito { position: relative; }
 
 nav a {
     text-decoration: none;
@@ -858,8 +879,20 @@ button:hover {
         align-items: center;
         padding: 10px 15px;
     }
+    /* El nav NO se esconde. Esta regla decia `display: none`, pensada para
+       un menu hamburguesa que nunca se llego a construir, y nunca llego a
+       aplicarse porque navbar.html traia `display: flex` en linea. Si la
+       dejaramos ahora que ese estilo en linea ya no esta, el usuario se
+       quedaria sin Perfil ni Orden en el movil.
+       En su lugar el nav se COMPACTA: se ocultan las etiquetas (.btn-text)
+       y quedan solo los iconos. */
     nav {
-        display: none;
+        gap: 8px;
+    }
+    .nav-btn {
+        padding: 9px 13px;
+        font-size: 16px;         /* el icono, que antes era texto de 12px */
+        gap: 0;
     }
     .btn-text {
         display: none;

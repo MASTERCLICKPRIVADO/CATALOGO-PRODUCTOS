@@ -161,7 +161,7 @@
         </label>
         <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
           <select name="plantilla_id" id="selector-plantilla" required
-                  style="flex: 1; min-width: 280px; padding: 12px; font-size: 15px;
+                  style="flex: 1; min-width: 180px; padding: 12px; font-size: 15px;
                          border: 1px solid #ccc; border-radius: 10px; background: white;">
             <option value="">— Selecciona una plantilla —</option>
             {% for plantilla in plantillas %}
@@ -272,7 +272,7 @@
       <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
         <input type="text" name="nombre" placeholder="Navidad, Black Friday, Normal..."
                maxlength="{{ max_largo_nombre }}" required
-               style="flex: 1; min-width: 220px; padding: 11px; border: 1px solid #ddd;
+               style="flex: 1; min-width: 170px; padding: 11px; border: 1px solid #ddd;
                       border-radius: 10px;">
         <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #555;">
           <input type="checkbox" name="acumulativo" value="1" checked
@@ -323,7 +323,7 @@
 
       <form method="post" action="/admin/descuentos/promocion"
             enctype="multipart/form-data" id="form-promocion"
-            style="flex: 1; min-width: 260px; margin: 0;">
+            style="flex: 1; min-width: 180px; margin: 0;">
         <p style="font-size: 11px; color: #999; text-transform: uppercase;
                   font-weight: bold; margin: 0 0 8px;">Subir una nueva</p>
 

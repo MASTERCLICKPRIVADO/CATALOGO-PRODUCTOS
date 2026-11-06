@@ -6,22 +6,40 @@
                 <h1>MASTER CLICK</h1>
             </div>
         </a>
-        
-        <nav style="display: flex; align-items: center; gap: 20px;">
+
+        {#
+           En movil (<=768px) estos botones se quedan SOLO con el icono: la
+           etiqueta va envuelta en .btn-text, que la hoja de estilos oculta
+           en ese tamaño. Con tres botones y texto no caben en un telefono,
+           se montan sobre el logo y la pagina se desborda a lo ancho.
+
+           Por eso el `aria-label` y el `title`: cuando el texto desaparece
+           son lo unico que dice que hace cada boton, tanto para un lector
+           de pantalla como para quien deja el dedo encima.
+
+           Los estilos estan en estilos2.css (.nav-btn), NO aqui en linea:
+           lo de linea le gana a las @media y era justo lo que impedia que
+           el navbar se adaptara.
+        #}
+        <nav>
             {% if request.session.user %}
-                <a href="/perfil" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                    <span>👤</span> Perfil
+                <a href="/perfil" class="btn nav-btn" title="Perfil" aria-label="Perfil">
+                    <span aria-hidden="true">&#128100;</span><span class="btn-text">Perfil</span>
                 </a>
+
                 {# Solo el admin ve este boton. Es cosmetico: la autorizacion de
                    verdad esta en app/admin.py, que verifica el permiso contra
                    la BD en cada peticion. #}
                 {% if (request.session.permisos or '')|lower == 'admin' %}
-                <a href="/admin/descuentos" class="btn" style="width: auto; padding: 8px 15px; font-size: 12px; background: #6e7350; text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                    <span>&#9881;</span> Descuentos
+                <a href="/admin/descuentos" class="btn nav-btn nav-btn--admin"
+                   title="Descuentos" aria-label="Descuentos">
+                    <span aria-hidden="true">&#9881;</span><span class="btn-text">Descuentos</span>
                 </a>
                 {% endif %}
-                <a href="/carrito" class="btn" style="position: relative; width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64; text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                    <span>🛒</span> Orden
+
+                <a href="/carrito" class="btn nav-btn nav-btn--carrito"
+                   title="Mi orden" aria-label="Mi orden">
+                    <span aria-hidden="true">&#128722;</span><span class="btn-text">Orden</span>
                     <span id="cart-badge"
                           style="display: none; position: absolute; top: -6px; right: -6px;
                                  background: #c62828; color: white; border-radius: 50%;
@@ -32,10 +50,9 @@
             {% elif request.session.guest_city %}
                 {# Invitado (sin cuenta) viendo el catálogo de una ciudad:
                    le damos cómo devolverse y cómo elegir otra ciudad. #}
-                <a href="/cambiar-ciudad" class="btn"
-                   style="width: auto; padding: 8px 15px; font-size: 12px; background: #8a8f64;
-                          text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                    <span>    </span> Cambiar de ciudad
+                <a href="/cambiar-ciudad" class="btn nav-btn"
+                   title="Cambiar de ciudad" aria-label="Cambiar de ciudad">
+                    <span aria-hidden="true">&#128205;</span><span class="btn-text">Cambiar de ciudad</span>
                 </a>
             {% endif %}
         </nav>
