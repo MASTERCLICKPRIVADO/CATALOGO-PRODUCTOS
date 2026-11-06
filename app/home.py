@@ -39,7 +39,7 @@ def _clave_orden_talla(grupo: dict):
 def get_promo_image_url() -> str:
     """
     Construye la URL pública del banner de promoción almacenado en Supabase
-    Storage. Estructura: <SUPABASE_URL>/storage/v1/object/public/<bucket>/<file>.
+    Storage. Estructura: <SUPABASE_URL>/storage/v1/object/public/<bucket>/static/<file>.
 
     Se agrega un cache-buster `?t=<timestamp>` para que, al actualizar la
     imagen en Supabase, el navegador la traiga al instante sin tener que
@@ -51,7 +51,7 @@ def get_promo_image_url() -> str:
     """
     base = (os.getenv("SUPABASE_URL") or "").rstrip("/")
     bucket = (os.getenv("SUPABASE_STORAGE_BUCKET") or "static").strip("/")
-    file_name = (os.getenv("SUPABASE_PROMO_FILE") or "promocion.jpeg").lstrip("/")
+    file_name = (os.getenv("SUPABASE_PROMO_FILE") or "promocion.jpg").lstrip("/")
     if not base:
         return f"/static/img/{file_name}"
     return f"{base}/storage/v1/object/public/{bucket}/{file_name}?t={int(time.time())}"
