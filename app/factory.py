@@ -74,8 +74,9 @@ def create_app():
         temporada.marcar_catalogo_cargado()
         print("✅ CSV cargado en memoria correctamente")
         yield
-        # Cleanup al apagar (opcional)
+        # Cleanup al apagar
         app.state.df = None
+        db.cerrar_pool()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -91,20 +92,10 @@ def create_app():
     async def auth_middleware(request: Request, call_next):
         path = request.url.path
 
-        # ── Temporada cerrada ─────────────────────────────────────────
-        # Va ANTES que el control de sesión: con la tienda cerrada no hay
-        # nada que mirar, tengas cuenta o no.
-        #
-        # `asegurar_catalogo` aprovecha el paso para comprobar, como mucho
-        # cada 10 segundos, si otra copia del servidor publicó una
-        # temporada nueva; si es así, recarga el catálogo de esta copia.
-        estado_temporada = temporada.estado_vigente()
+        # De paso, como mucho cada 10 segundos, se comprueba si otra copia
+        # del servidor publicó una temporada nueva; si es así, esta copia
+        # recarga su catálogo.
         temporada.asegurar_catalogo(request.app)
-
-        if not estado_temporada["abierta"] and not path.startswith(ABIERTAS_SIEMPRE):
-            return request.app.state.templates.TemplateResponse(
-                request, "cerrado.html", {}, status_code=503,
-            )
 
         # 1) Rutas SIEMPRE públicas (no requieren ni sesión ni ciudad).
         #    /api/powerbi se autentica con X-API-Key dentro de su router.
@@ -133,6 +124,38 @@ def create_app():
                 return RedirectResponse(url="/login")
         elif "user" not in request.session:
             return RedirectResponse(url="/login")
+
+        # ── Temporada cerrada ─────────────────────────────────────────
+        # Va DESPUÉS del control de sesión, a propósito: quien no ha
+        # entrado sigue viendo el login de siempre, y el aviso de cerrado
+        # solo aparece una vez dentro. Si fuera antes, el login quedaría
+        # tapado y nadie podría entrar, ni el admin.
+        # Lo lee templates/base.html para avisar al admin de que está
+        # mirando una tienda que el público no ve. Se define SIEMPRE, para
+        # que la plantilla no dependa de si el atributo existe.
+        request.state.cerrada_pero_admin = False
+
+        if not path.startswith(ABIERTAS_SIEMPRE):
+            if not temporada.estado_vigente()["abierta"]:
+                permisos = str(request.session.get("permisos") or "").strip().lower()
+
+                if permisos == "admin":
+                    # El admin pasa. Es la única forma de revisar el
+                    # catálogo publicado ANTES de abrir la temporada, que
+                    # es justo para lo que sirve poder cerrarla.
+                    #
+                    # Aquí nos fiamos del permiso de la sesión en vez de
+                    # consultarlo a la base, porque esto corre en CADA
+                    # petición y una consulta por página devolvería la
+                    # lentitud que quitamos con el pool. Lo único que
+                    # concede es ver el catálogo; el panel sigue
+                    # comprobando el permiso contra la base en cada
+                    # petición (ver requiere_admin en app/admin.py).
+                    request.state.cerrada_pero_admin = True
+                else:
+                    return request.app.state.templates.TemplateResponse(
+                        request, "cerrado.html", {}, status_code=503,
+                    )
 
         response = await call_next(request)
 

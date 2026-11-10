@@ -112,6 +112,24 @@
         </div>
     </div>
 
+    {#
+       Recordatorio para el admin cuando la temporada está cerrada.
+
+       El admin es el único que puede navegar la tienda cerrada, para
+       revisar el catálogo antes de abrirla. Sin este aviso es fácil
+       olvidarse de que nadie más lo está viendo y creer que ya está
+       abierta. Lo marca el middleware de app/factory.py.
+    #}
+    {% if request.state.cerrada_pero_admin %}
+    <div class="aviso-cerrada">
+        <span>
+            <strong>Tienda cerrada al público.</strong>
+            Esto solo lo ves tú porque eres admin.
+        </span>
+        <a href="/admin/temporada">Abrir temporada</a>
+    </div>
+    {% endif %}
+
     <main>
         {% block content %}{% endblock %}
     </main>

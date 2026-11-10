@@ -1,10 +1,14 @@
 {#
    Lo que ve cualquiera cuando la temporada está cerrada.
 
-   La sirve el middleware de app/factory.py, antes incluso de mirar si hay
-   sesión: con la tienda cerrada no hay nada que enseñar, se tenga cuenta o
-   no. El admin sí sigue entrando a /admin para preparar y abrir la
-   siguiente.
+   La sirve el middleware de app/factory.py DESPUÉS de comprobar la sesión,
+   así que solo la ve quien ya entró. Quien no ha iniciado sesión sigue
+   viendo el login normal; si no, nadie podría entrar, ni el admin.
+
+   Por eso lleva salidas: un enlace al panel para el admin y otro para
+   cerrar sesión. Sin ellos, cerrar la tienda dejaba al admin atrapado,
+   porque esta pantalla no tiene navbar y la única forma de salir era
+   escribir la URL a mano.
 
    NO extiende base.html a propósito: esa plantilla trae el navbar con
    Perfil y Orden, y ofrecer botones que no llevan a ninguna parte sería
@@ -28,6 +32,11 @@
             background: #f7f7f5;
         }
         .aviso {
+            /* estilos2.css trae `main { flex: 1; display: flex }`, y esta
+               tarjeta es un <main>. Sin anular eso, se estira hasta el
+               final de la pantalla y queda un cajón blanco casi vacío. */
+            flex: none;
+            display: block;
             background: white;
             border-radius: 24px;
             padding: 40px 32px;
@@ -50,6 +59,16 @@
             margin: 0 0 10px;
         }
         .aviso .fino { color: #999; font-size: 13px; margin-top: 22px; }
+        .salidas {
+            display: flex; gap: 12px; justify-content: center;
+            flex-wrap: wrap; margin-top: 26px;
+        }
+        .salidas a {
+            padding: 11px 22px; border-radius: 12px; font-size: 14px;
+            text-decoration: none; font-weight: bold;
+        }
+        .salidas .panel { background: #8a8f64; color: white; }
+        .salidas .salir { background: none; color: #8a8f64; border: 1px solid #8a8f64; }
     </style>
 </head>
 <body>
@@ -59,6 +78,15 @@
         <p>En este momento no hay catálogo disponible ni se pueden hacer
            reservas.</p>
         <p>Te avisaremos cuando abra la siguiente.</p>
+
+        {# Sin enlace al panel: el admin nunca llega aquí, entra a la tienda
+           con normalidad. Quien vea esta pantalla no es admin. Queda el
+           cierre de sesión, que además sirve de salida si el permiso de la
+           sesión estuviera desactualizado: al volver a entrar se relee. #}
+        <div class="salidas">
+            <a href="/logout" class="salir">Cerrar sesión</a>
+        </div>
+
         <p class="fino">MASTER CLICK &middot; Master Series</p>
     </main>
 </body>

@@ -11,10 +11,12 @@ para evitar problemas de estado entre conexiones reutilizadas.
 import csv
 import io
 import os
+import threading
 from datetime import datetime, timezone, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from psycopg.sql import SQL, Identifier
 from psycopg.types.json import Json
 from dotenv import load_dotenv
@@ -49,15 +51,107 @@ if not DATABASE_URL:
     )
 
 
-def _get_conn():
-    """Abre una conexión nueva contra Supabase. Cerrar con `with`."""
-    return psycopg.connect(
+# ──────────────────────────────────────────────────────────────────────────
+# POOL DE CONEXIONES
+# ──────────────────────────────────────────────────────────────────────────
+# Antes se abría una conexión NUEVA en cada llamada. Medido contra este
+# Supabase, eso costaba:
+#
+#     SELECT 1 abriendo conexión nueva ....... 952 ms
+#     SELECT 1 reutilizando la conexión ...... 112 ms
+#
+# O sea que ~840 ms de cada consulta eran el saludo de TCP y TLS, no la
+# consulta. Y como cada página abre varias, se sumaban: el carrito abría
+# tres y tardaba ~3 s en responder.
+#
+# El pool mantiene unas pocas conexiones abiertas y las presta. El saludo
+# se paga una vez, no en cada consulta.
+#
+# POR QUÉ NO HAY QUE TOCAR NINGUNA LLAMADA
+# ----------------------------------------
+# `pool.connection()` devuelve un gestor de contexto que hace exactamente
+# lo mismo que antes hacía `psycopg.connect()` dentro de un `with`: commit
+# si todo fue bien, rollback si hubo excepción. La única diferencia es que
+# al final devuelve la conexión al pool en vez de cerrarla. Los 43
+# `with _get_conn() as conn:` del proyecto siguen funcionando igual.
+#
+# SOBRE EL POOLER DE SUPABASE
+# ---------------------------
+# DATABASE_URL apunta al pooler en modo transacción (puerto 6543). Esto no
+# lo sustituye: aquel reparte conexiones del lado del servidor, este evita
+# el handshake del lado del cliente. Por eso `prepare_threshold=None` sigue
+# siendo obligatorio, y por eso NO hay que dar por hecho que dos consultas
+# seguidas caen en la misma sesión del servidor (algo que ya costó caro).
+
+# Cuántas conexiones puede tener abiertas cada proceso. Render puede correr
+# varias copias, así que el total es este número por copia.
+DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "4"))
+
+# Cuánto espera una petición a que se libere una conexión antes de fallar.
+DB_POOL_TIMEOUT = float(os.getenv("DB_POOL_TIMEOUT", "30"))
+
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _crear_pool():
+    return ConnectionPool(
         DATABASE_URL,
-        prepare_threshold=None,
-        row_factory=dict_row,
-        autocommit=False,
-        options="-c timezone=America/Bogota",
+        min_size=1,
+        max_size=DB_POOL_MAX,
+        timeout=DB_POOL_TIMEOUT,
+        # Recicla conexiones antes de que el pooler de Supabase corte las
+        # ociosas por su cuenta.
+        max_idle=240.0,
+        max_lifetime=1800.0,
+        # Comprueba que la conexión sigue viva antes de prestarla. Cuesta
+        # un viaje de ida y vuelta, pero evita que una conexión muerta
+        # haga fallar una petición de un cliente.
+        check=ConnectionPool.check_connection,
+        kwargs={
+            "prepare_threshold": None,      # obligatorio con el pooler
+            "row_factory": dict_row,
+            "autocommit": False,
+            "options": "-c timezone=America/Bogota",
+        },
+        name="masterclick",
+        open=False,
     )
+
+
+def _obtener_pool():
+    """El pool, creado la primera vez que hace falta (no al importar)."""
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:                 # otro hilo pudo crearlo
+                nuevo = _crear_pool()
+                nuevo.open()
+                _pool = nuevo
+    return _pool
+
+
+def _get_conn():
+    """
+    Presta una conexión del pool. Se usa igual que siempre:
+
+        with _get_conn() as conn:
+            ...
+
+    Al salir hace commit (o rollback si hubo excepción) y la devuelve al
+    pool en vez de cerrarla.
+    """
+    return _obtener_pool().connection()
+
+
+def cerrar_pool():
+    """Cierra las conexiones al apagar el servidor."""
+    global _pool
+    if _pool is not None:
+        with _pool_lock:
+            if _pool is not None:
+                _pool.close()
+                _pool = None
 
 
 def init_storage():
