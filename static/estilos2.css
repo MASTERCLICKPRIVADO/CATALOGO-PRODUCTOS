@@ -229,8 +229,44 @@ button, .btn {
     width: 100%;
 }
 
-button:hover {
-    background: #7a7f54;
+/* ──────────────────────────────────────────────────────────────────────
+   HOVER DE LOS BOTONES
+   ──────────────────────────────────────────────────────────────────────
+   Antes esto decia `background: #7a7f54` y no funcionaba en casi ningun
+   boton del panel, porque esos llevan el color escrito en su atributo
+   `style` y lo de linea le gana a cualquier regla de esta hoja.
+
+   Se oscurece el boton entero con `filter` en vez de cambiarle el fondo:
+   el filtro se aplica sobre lo ya pintado, asi que da igual de donde
+   venga el color. Funciona con los verdes, con los rojos, con los de
+   borde y con los que lleven un degradado.
+
+   Va tambien para `.btn`, que son enlaces con pinta de boton (Editar,
+   Ir al panel...) y que con la regla vieja no tenian hover ninguno.    */
+
+button:hover,
+.btn:hover,
+.pestana:hover,
+.aviso-cerrada a:hover {
+    filter: brightness(0.90);
+}
+
+button:active,
+.btn:active,
+.pestana:active,
+.aviso-cerrada a:active {
+    filter: brightness(0.82);
+    transform: translateY(1px);
+}
+
+/* Un boton apagado o esperando al servidor no reacciona: si lo hiciera,
+   parecería que todavia se puede pulsar. */
+button:disabled:hover,
+button:disabled:active,
+[aria-busy="true"]:hover,
+[aria-busy="true"]:active {
+    filter: none;
+    transform: none;
 }
 
 /* SEARCH & FILTERS */
