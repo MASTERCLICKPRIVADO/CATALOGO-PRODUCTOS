@@ -100,7 +100,7 @@
     <!-- ── Estado de la tienda ────────────────────────────────────────── -->
     <div id="estado-tienda" class="{% if estado.abierta %}abierta{% else %}cerrada{% endif %}">
       {% if estado.abierta %}
-      <p class="rotulo" style="color: #6e7350;">● Tienda abierta</p>
+      <p class="rotulo" style="color: #6e7350;">● Temporada abierta</p>
       <p style="margin: 0 0 16px; color: #555;">
         Los clientes ven el catálogo y pueden reservar. En memoria hay
         <strong>{{ "{:,}".format(catalogo_en_memoria).replace(",", ".") }}</strong>
@@ -108,18 +108,18 @@
       </p>
       <form method="post" action="/admin/temporada/cerrar" id="form-cerrar" style="margin: 0;">
         <button type="submit" class="btn" style="width: auto; padding: 11px 26px; background: #c62828;">
-          Cerrar tienda
+          Cerrar temporada
         </button>
       </form>
       {% else %}
-      <p class="rotulo" style="color: #c62828;">○ Tienda cerrada</p>
+      <p class="rotulo" style="color: #c62828;">○ Temporada cerrada</p>
       <p style="margin: 0 0 16px; color: #555;">
         Quien entre ve el aviso de temporada cerrada. No se ve el catálogo ni
         se puede reservar. Tú sigues entrando a este panel.
       </p>
       <form method="post" action="/admin/temporada/abrir" id="form-abrir" style="margin: 0;">
         <button type="submit" class="btn" style="width: auto; padding: 11px 26px; background: #8a8f64;">
-          Abrir tienda
+          Abrir temporada
         </button>
       </form>
       {% endif %}
@@ -332,11 +332,11 @@
   }
 
   confirmar('form-cerrar',
-    '¿Cerrar la tienda?\n\nQuien entre verá el aviso de temporada cerrada y ' +
-    'nadie podrá reservar.', 'Cerrando...');
+    '¿Cerrar la temporada?\n\nQuien entre verá el aviso de temporada ' +
+    'cerrada y nadie podrá reservar.', 'Cerrando...');
 
   confirmar('form-abrir',
-    '¿Abrir la tienda?\n\nLos clientes van a ver el catálogo que esté ' +
+    '¿Abrir la temporada?\n\nLos clientes van a ver el catálogo que esté ' +
     'publicado ahora mismo.', 'Abriendo...');
 
   // Publicar es el único irreversible: el aviso lo dice sin rodeos.

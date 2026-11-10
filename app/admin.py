@@ -634,9 +634,10 @@ MENSAJES_TEMPORADA = {
     "parrafo": "Párrafo guardado. Se publicará con la temporada.",
     "descartado": "Se descartó lo que estaba preparado. Nada cambió para los clientes.",
     "publicada": "Temporada publicada: los clientes ya ven el catálogo nuevo.",
-    "abierta": "Tienda abierta. Los clientes ya pueden ver el catálogo y reservar.",
-    "cerrada": ("Tienda cerrada. Quien entre verá el aviso de temporada "
-                "cerrada; tú sigues entrando al panel."),
+    "abierta": ("Temporada abierta. Los clientes ya pueden ver el catálogo "
+                "y reservar."),
+    "cerrada": ("Temporada cerrada. Quien entre verá el aviso; tú sigues "
+                "navegando la tienda y entrando al panel."),
 }
 
 # Tope de lectura del archivo subido. Se lee con limite para que un archivo
