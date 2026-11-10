@@ -1,0 +1,65 @@
+{#
+   Lo que ve cualquiera cuando la temporada está cerrada.
+
+   La sirve el middleware de app/factory.py, antes incluso de mirar si hay
+   sesión: con la tienda cerrada no hay nada que enseñar, se tenga cuenta o
+   no. El admin sí sigue entrando a /admin para preparar y abrir la
+   siguiente.
+
+   NO extiende base.html a propósito: esa plantilla trae el navbar con
+   Perfil y Orden, y ofrecer botones que no llevan a ninguna parte sería
+   peor que no ponerlos.
+#}<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temporada cerrada - MASTER CLICK</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='estilos2.css') }}">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+            background: #f7f7f5;
+        }
+        .aviso {
+            background: white;
+            border-radius: 24px;
+            padding: 40px 32px;
+            max-width: 460px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, .06);
+        }
+        .aviso img { width: 110px; height: auto; margin-bottom: 8px; }
+        .aviso h1 {
+            color: #8a8f64;
+            font-size: 26px;
+            margin: 0 0 14px;
+            line-height: 1.25;
+        }
+        .aviso p {
+            color: #666;
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 0 0 10px;
+        }
+        .aviso .fino { color: #999; font-size: 13px; margin-top: 22px; }
+    </style>
+</head>
+<body>
+    <main class="aviso">
+        <img src="{{ url_for('static', path='img/ESCUDO.jpeg') }}" alt="Master Series">
+        <h1>La temporada está cerrada</h1>
+        <p>En este momento no hay catálogo disponible ni se pueden hacer
+           reservas.</p>
+        <p>Te avisaremos cuando abra la siguiente.</p>
+        <p class="fino">MASTER CLICK &middot; Master Series</p>
+    </main>
+</body>
+</html>

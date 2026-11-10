@@ -49,6 +49,9 @@ from app import db
 from app import home
 from app import imagen_promocion
 from app import logicas_descuento
+# `temporada_mod` y no `temporada` porque abajo hay rutas cuyo parámetro se
+# llama así; el alias evita que una cosa tape a la otra.
+from app import temporada as temporada_mod
 
 router = APIRouter(prefix="/admin")
 
@@ -608,3 +611,212 @@ async def guardar_plantilla(request: Request, plantilla_id: int):
         url=f"/admin/descuentos/plantillas/{plantilla_id}?msg=guardada",
         status_code=303,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# TEMPORADAS
+# ──────────────────────────────────────────────────────────────────────────
+# La tienda funciona por temporadas. Aqui el admin sube el catalogo, los
+# excluidos y el parrafo de terminos, los revisa, y decide cuando se
+# publican y cuando se abre o se cierra la tienda.
+#
+# SUBIR NO ES PUBLICAR. Cada archivo se guarda aparte (`data_preparada`,
+# `excluidos_preparada`, el parrafo en `temporada`) y los clientes siguen
+# viendo lo de siempre hasta que el admin le da a publicar.
+#
+# Todo va por envio normal de formulario, no por fetch: cada accion cambia
+# media pantalla, y recargarla una vez sale mas barato que pedir JSON y
+# recargar igual despues.
+
+MENSAJES_TEMPORADA = {
+    "catalogo": "Catálogo cargado. Revísalo abajo y publícalo cuando quieras.",
+    "excluidos": "Excluidos cargados. Revísalos abajo y publícalos cuando quieras.",
+    "parrafo": "Párrafo guardado. Se publicará con la temporada.",
+    "descartado": "Se descartó lo que estaba preparado. Nada cambió para los clientes.",
+    "publicada": "Temporada publicada: los clientes ya ven el catálogo nuevo.",
+    "abierta": "Tienda abierta. Los clientes ya pueden ver el catálogo y reservar.",
+    "cerrada": ("Tienda cerrada. Quien entre verá el aviso de temporada "
+                "cerrada; tú sigues entrando al panel."),
+}
+
+# Tope de lectura del archivo subido. Se lee con limite para que un archivo
+# disparatado no se cargue entero en memoria solo para acabar rechazandolo.
+TOPE_LECTURA = temporada_mod.MAX_BYTES + 1
+
+
+def _render_temporada(request: Request, *, error=None, msg=None, avisos=None):
+    templates = request.app.state.templates
+
+    estado = db.obtener_estado_temporada()
+    try:
+        resumen = db.resumen_preparado() if estado.get("existe") else {}
+    except Exception as e:
+        resumen = {}
+        error = error or _error_bd(e)
+
+    try:
+        catalogo_actual = len(request.app.state.df) if request.app.state.df is not None else 0
+    except Exception:
+        catalogo_actual = 0
+
+    return templates.TemplateResponse(
+        request,
+        "admin_temporada.html",
+        {
+            "estado": estado,
+            "resumen": resumen,
+            "catalogo_en_memoria": catalogo_actual,
+            "error": error,
+            "msg": msg,
+            "avisos": avisos or [],
+            "max_mb": temporada_mod.MAX_BYTES // 1024 // 1024,
+            "max_parrafo": temporada_mod.MAX_LARGO_PARRAFO,
+            "parrafo_publicado": (db.obtener_promocion_activa() or {}).get("descripcion", ""),
+        },
+    )
+
+
+@router.get("/temporada", response_class=HTMLResponse,
+            dependencies=[Depends(requiere_admin)])
+async def ver_temporada(request: Request, msg: str = "", error: str = ""):
+    return _render_temporada(request, msg=MENSAJES_TEMPORADA.get(msg),
+                             error=error or None)
+
+
+async def _leer_subida(archivo):
+    """Lee el archivo subido con tope. Devuelve `(datos, error)`."""
+    if archivo is None:
+        return None, "No llegó ningún archivo. Elige un CSV."
+    datos = await archivo.read(TOPE_LECTURA)
+    return datos, None
+
+
+@router.post("/temporada/catalogo", dependencies=[Depends(requiere_admin)])
+async def subir_catalogo(request: Request, archivo: UploadFile = File(None)):
+    """
+    Guarda el catálogo subido como PREPARADO. No toca lo que ven los
+    clientes: eso solo pasa al publicar.
+    """
+    datos, error = await _leer_subida(archivo)
+    if error:
+        return _render_temporada(request, error=error)
+
+    df, error = temporada_mod.leer_csv(datos)
+    if error:
+        return _render_temporada(request, error=error)
+
+    listo, error, avisos = temporada_mod.validar_data(df)
+    if error:
+        return _render_temporada(request, error=error, avisos=avisos)
+
+    try:
+        db.preparar_catalogo(listo, str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e), avisos=avisos)
+
+    if avisos:
+        return _render_temporada(request, msg=MENSAJES_TEMPORADA["catalogo"],
+                                 avisos=avisos)
+    return RedirectResponse(url="/admin/temporada?msg=catalogo", status_code=303)
+
+
+@router.post("/temporada/excluidos", dependencies=[Depends(requiere_admin)])
+async def subir_excluidos(request: Request, archivo: UploadFile = File(None)):
+    """Igual que el catálogo, para las referencias excluidas de la promoción."""
+    datos, error = await _leer_subida(archivo)
+    if error:
+        return _render_temporada(request, error=error)
+
+    df, error = temporada_mod.leer_csv(datos)
+    if error:
+        return _render_temporada(request, error=error)
+
+    listo, error, avisos = temporada_mod.validar_excluidos(df)
+    if error:
+        return _render_temporada(request, error=error, avisos=avisos)
+
+    try:
+        db.preparar_excluidos(listo, str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e), avisos=avisos)
+
+    if avisos:
+        return _render_temporada(request, msg=MENSAJES_TEMPORADA["excluidos"],
+                                 avisos=avisos)
+    return RedirectResponse(url="/admin/temporada?msg=excluidos", status_code=303)
+
+
+@router.post("/temporada/parrafo", dependencies=[Depends(requiere_admin)])
+async def guardar_parrafo(request: Request, parrafo: str = Form("")):
+    """Guarda el párrafo de términos preparado. Tampoco publica."""
+    limpio, error = temporada_mod.validar_parrafo(parrafo)
+    if error:
+        return _render_temporada(request, error=error)
+
+    try:
+        db.preparar_parrafo(limpio, str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    return RedirectResponse(url="/admin/temporada?msg=parrafo", status_code=303)
+
+
+@router.post("/temporada/descartar", dependencies=[Depends(requiere_admin)])
+async def descartar(request: Request, que: str = Form("")):
+    """Tira una de las piezas preparadas. No toca nada publicado."""
+    try:
+        if not db.descartar_preparado(str(que).strip(),
+                                      str(request.session.get("user") or "")):
+            return _render_temporada(request, error="No sé qué quieres descartar.")
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    return RedirectResponse(url="/admin/temporada?msg=descartado", status_code=303)
+
+
+@router.post("/temporada/publicar", dependencies=[Depends(requiere_admin)])
+async def publicar(request: Request):
+    """
+    Vuelca lo preparado sobre las tablas de verdad. Es el momento en que
+    cambia lo que ven los clientes.
+
+    El archivo MANDA sobre el inventario: el stock queda como diga el
+    catálogo subido, aunque se hayan reservado unidades desde que se
+    exportó. Por eso la pantalla pide confirmación antes de llegar aquí.
+    """
+    try:
+        hecho = db.publicar_temporada(str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    if not any(hecho.values()):
+        return _render_temporada(request, error="No hay nada preparado que publicar.")
+
+    # Que este proceso lo vea ya, sin esperar al TTL; los demás se enteran
+    # solos por el número de versión.
+    temporada_mod.invalidar_cache()
+    temporada_mod.asegurar_catalogo(request.app)
+
+    return RedirectResponse(url="/admin/temporada?msg=publicada", status_code=303)
+
+
+@router.post("/temporada/abrir", dependencies=[Depends(requiere_admin)])
+async def abrir(request: Request):
+    try:
+        db.abrir_temporada(str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    temporada_mod.invalidar_cache()
+    return RedirectResponse(url="/admin/temporada?msg=abierta", status_code=303)
+
+
+@router.post("/temporada/cerrar", dependencies=[Depends(requiere_admin)])
+async def cerrar(request: Request):
+    try:
+        db.cerrar_temporada(str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    temporada_mod.invalidar_cache()
+    return RedirectResponse(url="/admin/temporada?msg=cerrada", status_code=303)

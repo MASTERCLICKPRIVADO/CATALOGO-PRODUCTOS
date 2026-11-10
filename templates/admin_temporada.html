@@ -1,0 +1,383 @@
+{% extends 'base.html' %}
+
+{% block title %} Temporada - Admin {% endblock %}
+
+{% block sidebar %}
+<p>La tienda funciona por temporadas. Aquí preparas la siguiente y decides
+   cuándo la ven los clientes.</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   <strong>Subir no es publicar.</strong> Los archivos quedan guardados
+   aparte y la tienda sigue igual hasta que le des a publicar.
+</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Al publicar, <strong>el archivo manda sobre el inventario</strong>: el
+   stock queda como diga el catálogo que subas, aunque se hayan reservado
+   unidades desde que lo exportaste.
+</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Con la tienda cerrada nadie ve el catálogo ni puede reservar. Tú sigues
+   entrando aquí.
+</p>
+{% endblock %}
+
+{% block content %}
+<style>
+  .pestanas { display: flex; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .pestana {
+    padding: 9px 18px; border-radius: 999px; font-size: 14px;
+    text-decoration: none; border: 1px solid #ddd; color: #777; background: white;
+  }
+  .pestana.activa { background: #8a8f64; border-color: #8a8f64; color: white; font-weight: bold; }
+  .caja-aviso { padding: 12px 16px; border-radius: 12px; margin-top: 16px; font-size: 14px; }
+  .caja-ok  { background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; }
+  .caja-mal { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+  .caja-ojo { background: #fff8e1; border: 1px solid #ffe082; color: #8d6e00; }
+
+  #estado-tienda { border-radius: 18px; padding: 22px 24px; margin-top: 22px; }
+  #estado-tienda.abierta { background: #f1f4e8; border: 2px solid #8a8f64; }
+  #estado-tienda.cerrada { background: #fbeaea; border: 2px dashed #c62828; }
+  .rotulo { font-size: 12px; font-weight: bold; text-transform: uppercase;
+            letter-spacing: 1px; margin: 0 0 6px; }
+
+  .pieza {
+    border: 1px solid #eee; border-radius: 16px; padding: 18px 20px;
+    margin-bottom: 14px; background: #fafaf7;
+  }
+  .pieza.lista { border-color: #8a8f64; background: #fcfdf8; }
+  .pieza h4 { margin: 0 0 4px; color: #333; font-size: 16px; }
+  .pieza .nota { font-size: 13px; color: #888; margin: 0 0 14px; }
+  .pieza input[type=file] {
+    display: block; width: 100%; padding: 10px; border: 1px dashed #bbb;
+    border-radius: 10px; background: white; font-size: 14px;
+  }
+  .etiqueta-lista {
+    background: #8a8f64; color: white; font-size: 11px; font-weight: bold;
+    padding: 3px 10px; border-radius: 999px; text-transform: uppercase;
+  }
+  .enlace-descartar {
+    background: none; border: none; color: #c62828; font-size: 13px;
+    cursor: pointer; text-decoration: underline; width: auto; padding: 0;
+  }
+  .cifras { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+  .cifra {
+    flex: 1; min-width: 120px; background: white; border: 1px solid #e8e8e0;
+    border-radius: 14px; padding: 12px 14px;
+  }
+  .cifra .que { font-size: 11px; color: #999; text-transform: uppercase;
+                font-weight: bold; display: block; }
+  .cifra .cuanto { font-size: 19px; font-weight: bold; color: #333; }
+  .cifra .cuanto small { font-size: 13px; color: #888; font-weight: normal; }
+</style>
+
+<section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
+  <div style="max-width: 980px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
+
+    <div class="pestanas">
+      <a href="/admin/descuentos" class="pestana">Descuentos</a>
+      <a href="/admin/temporada" class="pestana activa">Temporada</a>
+    </div>
+
+    <h1 style="color: #8a8f64; margin: 10px 0 4px;">Temporada</h1>
+    <p style="color: #999; margin: 0; font-size: 0.85rem;">
+      El catálogo, los excluidos y el párrafo de términos. Se preparan aquí y
+      se publican cuando tú digas.
+    </p>
+
+    {% if msg %}<div class="caja-aviso caja-ok">{{ msg }}</div>{% endif %}
+    {% if error %}<div class="caja-aviso caja-mal">{{ error }}</div>{% endif %}
+    {% for aviso in avisos %}<div class="caja-aviso caja-ojo">{{ aviso }}</div>{% endfor %}
+
+    {% if not estado.existe %}
+    <div class="caja-aviso caja-ojo">
+      <strong>Falta correr la migración.</strong><br>
+      El archivo <code>migraciones/migracion_temporadas.sql</code> todavía no
+      se ha ejecutado en Supabase, así que esta pantalla no puede guardar
+      nada. Mientras tanto la tienda funciona normal, como si estuviera
+      siempre abierta.
+    </div>
+    {% endif %}
+
+    <!-- ── Estado de la tienda ────────────────────────────────────────── -->
+    <div id="estado-tienda" class="{% if estado.abierta %}abierta{% else %}cerrada{% endif %}">
+      {% if estado.abierta %}
+      <p class="rotulo" style="color: #6e7350;">● Tienda abierta</p>
+      <p style="margin: 0 0 16px; color: #555;">
+        Los clientes ven el catálogo y pueden reservar. En memoria hay
+        <strong>{{ "{:,}".format(catalogo_en_memoria).replace(",", ".") }}</strong>
+        filas de catálogo.
+      </p>
+      <form method="post" action="/admin/temporada/cerrar" id="form-cerrar" style="margin: 0;">
+        <button type="submit" class="btn" style="width: auto; padding: 11px 26px; background: #c62828;">
+          Cerrar tienda
+        </button>
+      </form>
+      {% else %}
+      <p class="rotulo" style="color: #c62828;">○ Tienda cerrada</p>
+      <p style="margin: 0 0 16px; color: #555;">
+        Quien entre ve el aviso de temporada cerrada. No se ve el catálogo ni
+        se puede reservar. Tú sigues entrando a este panel.
+      </p>
+      <form method="post" action="/admin/temporada/abrir" id="form-abrir" style="margin: 0;">
+        <button type="submit" class="btn" style="width: auto; padding: 11px 26px; background: #8a8f64;">
+          Abrir tienda
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- ── Lo que hay preparado ───────────────────────────────────────── -->
+    <h3 style="color: #8a8f64; margin: 35px 0 6px;">Preparar la temporada</h3>
+    <p style="font-size: 13px; color: #777; margin: 0 0 16px;">
+      Sube los archivos en CSV. Nada de esto cambia la tienda todavía.
+      Máximo {{ max_mb }} MB por archivo.
+    </p>
+
+    <!-- Catálogo -->
+    <div class="pieza {% if estado.data_filas %}lista{% endif %}">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h4>1. Catálogo</h4>
+        {% if estado.data_filas %}<span class="etiqueta-lista">Preparado</span>{% endif %}
+      </div>
+      {% if estado.data_filas %}
+      <p class="nota">
+        {{ "{:,}".format(estado.data_filas).replace(",", ".") }} filas,
+        subidas por {{ estado.data_por or '—' }}
+        {% if estado.data_en %}el {{ estado.data_en.strftime('%d/%m/%Y a las %H:%M') }}{% endif %}.
+      </p>
+      {% else %}
+      <p class="nota">Los artículos con su referencia, talla, tienda, precio,
+         descuento e inventario.</p>
+      {% endif %}
+
+      {# Los dos formularios van uno al lado del otro, NUNCA uno dentro del
+         otro: HTML no permite anidar <form> y el navegador lo deshace. #}
+      <form method="post" action="/admin/temporada/catalogo" enctype="multipart/form-data"
+            class="form-subida" style="margin: 0;">
+        <input type="file" name="archivo" accept=".csv,text/csv" required>
+        <button type="submit" class="btn"
+                style="width: auto; padding: 10px 22px; margin-top: 12px; background: #8a8f64;">
+          {% if estado.data_filas %}Reemplazar archivo{% else %}Subir catálogo{% endif %}
+        </button>
+      </form>
+      {% if estado.data_filas %}
+      <form method="post" action="/admin/temporada/descartar" class="form-descartar"
+            style="margin: 10px 0 0;">
+        <input type="hidden" name="que" value="catalogo">
+        <button type="submit" class="enlace-descartar">Descartar lo preparado</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Excluidos -->
+    <div class="pieza {% if estado.excluidos_filas %}lista{% endif %}">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h4>2. Excluidos</h4>
+        {% if estado.excluidos_filas %}<span class="etiqueta-lista">Preparado</span>{% endif %}
+      </div>
+      {% if estado.excluidos_filas %}
+      <p class="nota">
+        {{ "{:,}".format(estado.excluidos_filas).replace(",", ".") }} referencias,
+        subidas por {{ estado.excluidos_por or '—' }}
+        {% if estado.excluidos_en %}el {{ estado.excluidos_en.strftime('%d/%m/%Y a las %H:%M') }}{% endif %}.
+      </p>
+      {% else %}
+      <p class="nota">Las referencias que NO entran en la promoción. Necesita
+         la columna <code>article_id</code>.</p>
+      {% endif %}
+
+      <form method="post" action="/admin/temporada/excluidos" enctype="multipart/form-data"
+            class="form-subida" style="margin: 0;">
+        <input type="file" name="archivo" accept=".csv,text/csv" required>
+        <button type="submit" class="btn"
+                style="width: auto; padding: 10px 22px; margin-top: 12px; background: #8a8f64;">
+          {% if estado.excluidos_filas %}Reemplazar archivo{% else %}Subir excluidos{% endif %}
+        </button>
+      </form>
+      {% if estado.excluidos_filas %}
+      <form method="post" action="/admin/temporada/descartar" class="form-descartar"
+            style="margin: 10px 0 0;">
+        <input type="hidden" name="que" value="excluidos">
+        <button type="submit" class="enlace-descartar">Descartar lo preparado</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Párrafo -->
+    <div class="pieza {% if estado.parrafo_preparado %}lista{% endif %}">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h4>3. Párrafo de términos</h4>
+        {% if estado.parrafo_preparado %}<span class="etiqueta-lista">Preparado</span>{% endif %}
+      </div>
+      <p class="nota">El texto legal que sale en la página de Términos: fechas,
+         porcentajes y condiciones de la campaña.</p>
+
+      <form method="post" action="/admin/temporada/parrafo" id="form-parrafo" style="margin: 0;">
+        <textarea name="parrafo" rows="7" maxlength="{{ max_parrafo }}" required
+                  style="width: 100%; padding: 12px; border: 1px solid #ddd;
+                         border-radius: 10px; font-family: inherit; font-size: 14px;
+                         line-height: 1.5; box-sizing: border-box;"
+        >{{ estado.parrafo_preparado or parrafo_publicado or '' }}</textarea>
+        <button type="submit" class="btn"
+                style="width: auto; padding: 10px 22px; margin-top: 10px; background: #8a8f64;">
+          Guardar párrafo
+        </button>
+      </form>
+      <div style="display: flex; gap: 14px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
+        {% if estado.parrafo_preparado %}
+        <form method="post" action="/admin/temporada/descartar" class="form-descartar" style="margin: 0;">
+          <input type="hidden" name="que" value="parrafo">
+          <button type="submit" class="enlace-descartar">Volver al publicado</button>
+        </form>
+        {% endif %}
+        <span style="font-size: 12px; color: #999;">
+          {% if estado.parrafo_preparado %}
+            Hay una versión preparada sin publicar.
+          {% else %}
+            Estás viendo el que está publicado ahora.
+          {% endif %}
+        </span>
+      </div>
+    </div>
+
+    <!-- ── Publicar ───────────────────────────────────────────────────── -->
+    {% if resumen.hay_catalogo or resumen.hay_excluidos or resumen.hay_parrafo %}
+    <h3 style="color: #8a8f64; margin: 35px 0 6px;">Antes de publicar</h3>
+    <p style="font-size: 13px; color: #777; margin: 0 0 14px;">
+      Esto es lo que cambiaría. Es la última oportunidad de ver que el archivo
+      no era el que tocaba.
+    </p>
+
+    <div style="border: 2px solid #8a8f64; border-radius: 18px; padding: 20px 22px; background: #fcfdf8;">
+      {% if resumen.hay_catalogo %}
+      <div class="cifras">
+        <div class="cifra">
+          <span class="que">Filas</span>
+          <span class="cuanto">{{ "{:,}".format(resumen.filas_nuevas).replace(",", ".") }}
+            <small>antes {{ "{:,}".format(resumen.filas_actuales).replace(",", ".") }}</small></span>
+        </div>
+        <div class="cifra">
+          <span class="que">Unidades en stock</span>
+          <span class="cuanto">{{ "{:,}".format(resumen.stock_nuevo).replace(",", ".") }}
+            <small>antes {{ "{:,}".format(resumen.stock_actual).replace(",", ".") }}</small></span>
+        </div>
+        <div class="cifra">
+          <span class="que">Referencias que entran</span>
+          <span class="cuanto" style="color: #2e7d32;">+{{ resumen.referencias_alta }}</span>
+        </div>
+        <div class="cifra">
+          <span class="que">Referencias que salen</span>
+          <span class="cuanto" style="color: #c62828;">−{{ resumen.referencias_baja }}</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <ul style="margin: 16px 0 0; padding-left: 20px; font-size: 14px; color: #555;">
+        {% if resumen.hay_catalogo %}
+        <li>Se reemplaza el catálogo entero, <strong>incluido el
+            inventario</strong>.</li>
+        {% endif %}
+        {% if resumen.hay_excluidos %}
+        <li>Los excluidos pasan de {{ resumen.excluidos_actuales }} a
+            <strong>{{ resumen.excluidos_nuevos }}</strong> referencias.</li>
+        {% endif %}
+        {% if resumen.hay_parrafo %}
+        <li>Se publica el párrafo de términos nuevo.</li>
+        {% endif %}
+      </ul>
+
+      <form method="post" action="/admin/temporada/publicar" id="form-publicar"
+            style="margin: 18px 0 0;"
+            data-stock-baja="{% if resumen.hay_catalogo and resumen.stock_nuevo < resumen.stock_actual %}1{% else %}0{% endif %}">
+        <button type="submit" class="btn" style="width: auto; padding: 13px 30px; background: #8a8f64; font-size: 15px;">
+          Publicar temporada
+        </button>
+        <p style="font-size: 12px; color: #888; margin: 12px 0 0;">
+          {% if estado.abierta %}
+            La tienda está abierta: el cambio se ve de inmediato.
+          {% else %}
+            La tienda está cerrada: se publicará, pero nadie lo verá hasta que
+            la abras.
+          {% endif %}
+        </p>
+      </form>
+    </div>
+    {% else %}
+    <p style="color: #999; font-style: italic; margin-top: 30px;">
+      No hay nada preparado. Sube al menos un archivo para poder publicar.
+    </p>
+    {% endif %}
+
+  </div>
+</section>
+
+<script>
+(function () {
+  // Todas estas acciones recargan la pantalla entera, así que la ruedita se
+  // pone y NO se quita: sigue girando hasta que llega la página nueva.
+  function alNavegar(el, texto) {
+    if (!el) return;
+    setTimeout(function () {
+      el.style.pointerEvents = 'none';
+      MC.cargando(el, texto);
+    }, 0);
+  }
+
+  function confirmar(id, pregunta, textoBoton) {
+    var form = document.getElementById(id);
+    if (!form) return;
+    form.addEventListener('submit', function (e) {
+      if (!confirm(pregunta)) { e.preventDefault(); return; }
+      alNavegar(form.querySelector('button'), textoBoton);
+    });
+  }
+
+  confirmar('form-cerrar',
+    '¿Cerrar la tienda?\n\nQuien entre verá el aviso de temporada cerrada y ' +
+    'nadie podrá reservar.', 'Cerrando...');
+
+  confirmar('form-abrir',
+    '¿Abrir la tienda?\n\nLos clientes van a ver el catálogo que esté ' +
+    'publicado ahora mismo.', 'Abriendo...');
+
+  // Publicar es el único irreversible: el aviso lo dice sin rodeos.
+  var publicar = document.getElementById('form-publicar');
+  if (publicar) {
+    publicar.addEventListener('submit', function (e) {
+      var aviso = '¿Publicar la temporada?\n\n' +
+        'El catálogo se reemplaza entero y el INVENTARIO queda como dice el ' +
+        'archivo que subiste.';
+      if (publicar.dataset.stockBaja === '1') {
+        aviso += '\n\nOjo: el stock total baja respecto al de ahora.';
+      }
+      aviso += '\n\nNo se puede deshacer.';
+      if (!confirm(aviso)) { e.preventDefault(); return; }
+      alNavegar(publicar.querySelector('button'), 'Publicando...');
+    });
+  }
+
+  // Subidas y descartes: ruedita, y confirmación solo al descartar.
+  Array.prototype.forEach.call(document.querySelectorAll('.form-subida'), function (f) {
+    f.addEventListener('submit', function () {
+      alNavegar(f.querySelector('button[type=submit]'), 'Subiendo...');
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.form-descartar'), function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!confirm('¿Descartar lo que tienes preparado?\n\nLa tienda no cambia; ' +
+                   'solo se tira el archivo sin publicar.')) {
+        e.preventDefault(); return;
+      }
+      alNavegar(f.querySelector('button'), '');
+    });
+  });
+
+  var parrafo = document.getElementById('form-parrafo');
+  if (parrafo) {
+    parrafo.addEventListener('submit', function () {
+      alNavegar(parrafo.querySelector('button[type=submit]'), 'Guardando...');
+    });
+  }
+})();
+</script>
+{% endblock %}

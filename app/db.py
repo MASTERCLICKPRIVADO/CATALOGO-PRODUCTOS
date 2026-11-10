@@ -8,6 +8,8 @@ desactivamos los prepared statements server-side (`prepare_threshold=None`)
 para evitar problemas de estado entre conexiones reutilizadas.
 """
 
+import csv
+import io
 import os
 from datetime import datetime, timezone, timedelta
 
@@ -1090,3 +1092,332 @@ def fetch_table_rows(table: str, offset: int = 0, limit: int = None):
         with conn.cursor() as cur:
             cur.execute(query, params)
             return cur.fetchall()
+
+
+# ----------------------- TEMPORADAS -----------------------
+#
+# La tienda funciona por temporadas: se abre unos dias y se cierra. El admin
+# prepara la siguiente (catalogo, excluidos y parrafo) sin tocar lo que ven
+# los clientes, y decide cuando publicarla.
+#
+# PREPARAR vs PUBLICAR
+# --------------------
+# Preparar escribe en `data_preparada` / `excluidos_preparada` / el parrafo
+# guardado en `temporada`. Nada de eso lo ve el cliente.
+# Publicar vuelca lo preparado sobre `data`, `excluidos` y `promociones` en
+# UNA transaccion y sube `temporada.version`.
+#
+# POR QUE UNA SOLA TRANSACCION
+# ----------------------------
+# Vaciar `data` y volver a llenarla son ~20.000 filas. Si se hiciera fuera
+# de una transaccion, durante unos segundos la tienda no tendria productos.
+# Dentro de ella, quien este navegando espera un momento y ve el catalogo
+# nuevo entero; nunca uno a medias.
+#
+# Ver migraciones/migracion_temporadas.sql y app/temporada.py.
+
+
+def _lista_columnas(columnas) -> str:
+    """Nombres de columna para SQL. `talla_u.s_co` lleva punto y necesita comillas."""
+    return ", ".join(f'"{c}"' if "." in c or c != c.lower() else c for c in columnas)
+
+
+def obtener_estado_temporada() -> dict:
+    """
+    El estado de la temporada y lo que hay preparado.
+
+    Devuelve siempre un dict, incluso si la tabla no existiera todavia
+    (falta correr la migracion): en ese caso `existe` viene en False y la
+    tienda se comporta como abierta, para no dejarla caida por eso.
+    """
+    try:
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT abierta, version, parrafo_preparado,
+                              data_filas, data_en, data_por,
+                              excluidos_filas, excluidos_en, excluidos_por,
+                              parrafo_en, parrafo_por
+                         FROM temporada WHERE id IS TRUE"""
+                )
+                fila = cur.fetchone()
+    except Exception as e:
+        print(f"⚠️  No se pudo leer el estado de la temporada: {e}")
+        return {"existe": False, "abierta": True, "version": 0}
+
+    if not fila:
+        return {"existe": False, "abierta": True, "version": 0}
+
+    estado = dict(fila)
+    estado["existe"] = True
+    estado["abierta"] = bool(estado["abierta"])
+    estado["version"] = int(estado["version"])
+    return estado
+
+
+def _bump(cur, usuario: str):
+    """Sube la version para que todas las copias del servidor se enteren."""
+    cur.execute(
+        """UPDATE temporada
+              SET version = version + 1,
+                  actualizado_por = %s,
+                  actualizado_en = %s
+            WHERE id IS TRUE""",
+        (str(usuario), hora_bogota_para_guardar()),
+    )
+
+
+def _copiar(cur, tabla: str, columnas, filas) -> int:
+    """
+    Mete `filas` en `tabla` con COPY, que es muchisimo mas rapido que un
+    INSERT por fila. Devuelve cuantas entraron.
+
+    Las tablas de preparacion no tienen indices a proposito: medido sobre
+    19.587 filas, COPY tarda 2,4 s sin indices y 7,4 s con ellos.
+    """
+    datos = io.StringIO()
+    escritor = csv.writer(datos, lineterminator="\n")
+    for fila in filas:
+        escritor.writerow(fila)
+    datos.seek(0)
+
+    with cur.copy(
+        f"COPY {tabla} ({_lista_columnas(columnas)}) FROM STDIN WITH (FORMAT csv)"
+    ) as copia:
+        copia.write(datos.getvalue())
+
+    cur.execute(f"SELECT count(*) AS n FROM {tabla}")
+    return int(cur.fetchone()["n"])
+
+
+def preparar_catalogo(df, usuario: str) -> int:
+    """
+    Guarda el catalogo subido en `data_preparada`, PISANDO lo que hubiera.
+    No toca `data`: los clientes siguen viendo lo de siempre.
+    """
+    columnas = list(df.columns)
+    filas = df.itertuples(index=False, name=None)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE data_preparada")
+            total = _copiar(cur, "data_preparada", columnas, filas)
+            cur.execute(
+                """UPDATE temporada
+                      SET data_filas = %s, data_en = %s, data_por = %s
+                    WHERE id IS TRUE""",
+                (total, hora_bogota_para_guardar(), str(usuario)),
+            )
+            _auditar(cur, usuario, "preparar_catalogo", {"filas": total})
+    return total
+
+
+def preparar_excluidos(df, usuario: str) -> int:
+    """Igual que el catalogo, para las referencias excluidas."""
+    columnas = list(df.columns)
+    filas = df.itertuples(index=False, name=None)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE excluidos_preparada")
+            total = _copiar(cur, "excluidos_preparada", columnas, filas)
+            cur.execute(
+                """UPDATE temporada
+                      SET excluidos_filas = %s, excluidos_en = %s, excluidos_por = %s
+                    WHERE id IS TRUE""",
+                (total, hora_bogota_para_guardar(), str(usuario)),
+            )
+            _auditar(cur, usuario, "preparar_excluidos", {"filas": total})
+    return total
+
+
+def preparar_parrafo(texto: str, usuario: str):
+    """Guarda el parrafo de terminos preparado, sin publicarlo."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE temporada
+                      SET parrafo_preparado = %s, parrafo_en = %s, parrafo_por = %s
+                    WHERE id IS TRUE""",
+                (str(texto), hora_bogota_para_guardar(), str(usuario)),
+            )
+            _auditar(cur, usuario, "preparar_parrafo", {"caracteres": len(texto)})
+
+
+def descartar_preparado(que: str, usuario: str):
+    """Tira lo preparado de una de las tres piezas, sin tocar lo publicado."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if que == "catalogo":
+                cur.execute("TRUNCATE data_preparada")
+                cur.execute("""UPDATE temporada SET data_filas = NULL,
+                                      data_en = NULL, data_por = NULL
+                                WHERE id IS TRUE""")
+            elif que == "excluidos":
+                cur.execute("TRUNCATE excluidos_preparada")
+                cur.execute("""UPDATE temporada SET excluidos_filas = NULL,
+                                      excluidos_en = NULL, excluidos_por = NULL
+                                WHERE id IS TRUE""")
+            elif que == "parrafo":
+                cur.execute("""UPDATE temporada SET parrafo_preparado = NULL,
+                                      parrafo_en = NULL, parrafo_por = NULL
+                                WHERE id IS TRUE""")
+            else:
+                return False
+            _auditar(cur, usuario, "descartar_preparado", {"que": que})
+    return True
+
+
+def resumen_preparado() -> dict:
+    """
+    Compara lo preparado con lo que hay publicado, para enseñarlo ANTES de
+    publicar. Es la ultima oportunidad de ver que el archivo no es el que
+    tocaba.
+
+    Compara por la clave natural (tienda, referencia, talla, ciudad).
+    """
+    vacio = {"hay_catalogo": False, "hay_excluidos": False, "hay_parrafo": False}
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) AS n FROM data_preparada")
+            filas_nuevas = int(cur.fetchone()["n"])
+
+            resumen = dict(vacio)
+            resumen["hay_catalogo"] = filas_nuevas > 0
+
+            if filas_nuevas:
+                cur.execute("SELECT count(*) AS n, COALESCE(sum(inventario),0) AS s FROM data")
+                actual = cur.fetchone()
+                cur.execute("SELECT COALESCE(sum(inventario),0) AS s FROM data_preparada")
+                stock_nuevo = int(cur.fetchone()["s"])
+
+                cur.execute(
+                    """SELECT
+                         (SELECT count(DISTINCT referencia) FROM data_preparada
+                           WHERE referencia NOT IN (SELECT referencia FROM data)) AS altas,
+                         (SELECT count(DISTINCT referencia) FROM data
+                           WHERE referencia NOT IN (SELECT referencia FROM data_preparada)) AS bajas,
+                         (SELECT count(DISTINCT referencia) FROM data_preparada) AS refs_nuevas,
+                         (SELECT count(DISTINCT referencia) FROM data) AS refs_actuales"""
+                )
+                comparacion = dict(cur.fetchone())
+                resumen.update({
+                    "filas_actuales": int(actual["n"]),
+                    "filas_nuevas": filas_nuevas,
+                    "stock_actual": int(actual["s"]),
+                    "stock_nuevo": stock_nuevo,
+                    "referencias_alta": int(comparacion["altas"]),
+                    "referencias_baja": int(comparacion["bajas"]),
+                    "referencias_actuales": int(comparacion["refs_actuales"]),
+                    "referencias_nuevas": int(comparacion["refs_nuevas"]),
+                })
+
+            cur.execute("SELECT count(*) AS n FROM excluidos_preparada")
+            exc_nuevos = int(cur.fetchone()["n"])
+            if exc_nuevos:
+                cur.execute("SELECT count(*) AS n FROM excluidos")
+                resumen.update({
+                    "hay_excluidos": True,
+                    "excluidos_actuales": int(cur.fetchone()["n"]),
+                    "excluidos_nuevos": exc_nuevos,
+                })
+
+            cur.execute("SELECT parrafo_preparado FROM temporada WHERE id IS TRUE")
+            fila = cur.fetchone()
+            resumen["hay_parrafo"] = bool(fila and fila["parrafo_preparado"])
+
+    return resumen
+
+
+def publicar_temporada(usuario: str) -> dict:
+    """
+    Vuelca lo preparado sobre las tablas de verdad, todo o nada.
+
+    El archivo MANDA sobre el inventario: el stock queda exactamente como
+    dice el catalogo subido, aunque la app haya descontado unidades desde
+    que se exporto. Es lo que se decidio, porque cada temporada arranca con
+    el inventario que diga el sistema de origen.
+
+    Devuelve un resumen de lo que se publico.
+    """
+    from app import temporada as _tp
+
+    hecho = {"catalogo": 0, "excluidos": 0, "parrafo": False}
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            # ── Catalogo ──────────────────────────────────────────────
+            cur.execute("SELECT count(*) AS n FROM data_preparada")
+            if int(cur.fetchone()["n"]) > 0:
+                columnas = _lista_columnas(_tp.COLUMNAS_DATA)
+                # TRUNCATE + INSERT dentro de la transaccion: quien este
+                # navegando espera a que termine y ve el catalogo nuevo
+                # completo. Nunca uno vacio.
+                cur.execute("TRUNCATE data")
+                cur.execute(
+                    f"INSERT INTO data ({columnas}) SELECT {columnas} FROM data_preparada"
+                )
+                hecho["catalogo"] = cur.rowcount
+                cur.execute("TRUNCATE data_preparada")
+                cur.execute("""UPDATE temporada SET data_filas = NULL,
+                                      data_en = NULL, data_por = NULL
+                                WHERE id IS TRUE""")
+
+            # ── Parrafo y excluidos: son la misma promocion ───────────
+            cur.execute("SELECT parrafo_preparado FROM temporada WHERE id IS TRUE")
+            parrafo = (cur.fetchone() or {}).get("parrafo_preparado")
+
+            cur.execute("SELECT id_promocion FROM promociones ORDER BY id_promocion DESC LIMIT 1")
+            fila = cur.fetchone()
+            id_promo = int(fila["id_promocion"]) if fila else 1
+            if not fila:
+                cur.execute("INSERT INTO promociones (id_promocion, descripcion) VALUES (%s, '')",
+                            (id_promo,))
+
+            if parrafo is not None:
+                cur.execute("UPDATE promociones SET descripcion = %s WHERE id_promocion = %s",
+                            (parrafo, id_promo))
+                cur.execute("""UPDATE temporada SET parrafo_preparado = NULL,
+                                      parrafo_en = NULL, parrafo_por = NULL
+                                WHERE id IS TRUE""")
+                hecho["parrafo"] = True
+
+            cur.execute("SELECT count(*) AS n FROM excluidos_preparada")
+            if int(cur.fetchone()["n"]) > 0:
+                cur.execute("TRUNCATE excluidos")
+                cur.execute(
+                    """INSERT INTO excluidos (article_id, campaign_name, id_promocion)
+                       SELECT article_id, campaign_name, %s FROM excluidos_preparada""",
+                    (id_promo,),
+                )
+                hecho["excluidos"] = cur.rowcount
+                cur.execute("TRUNCATE excluidos_preparada")
+                cur.execute("""UPDATE temporada SET excluidos_filas = NULL,
+                                      excluidos_en = NULL, excluidos_por = NULL
+                                WHERE id IS TRUE""")
+
+            _bump(cur, usuario)
+            _auditar(cur, usuario, "publicar_temporada", hecho)
+
+    return hecho
+
+
+def abrir_temporada(usuario: str):
+    """Abre la tienda al publico."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE temporada SET abierta = true WHERE id IS TRUE")
+            _bump(cur, usuario)
+            _auditar(cur, usuario, "abrir_temporada", {})
+
+
+def cerrar_temporada(usuario: str):
+    """
+    Cierra la tienda: quien entre ve el aviso de temporada cerrada y no
+    puede reservar. El admin sigue entrando al panel.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE temporada SET abierta = false WHERE id IS TRUE")
+            _bump(cur, usuario)
+            _auditar(cur, usuario, "cerrar_temporada", {})

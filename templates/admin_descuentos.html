@@ -23,6 +23,15 @@
 
 {% block content %}
 <style>
+  /* Pestañas del panel. Van aquí y no en el navbar para no meter un tercer
+     botón arriba, que es justo lo que no cabía en el móvil. */
+  .pestanas { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .pestana {
+    padding: 9px 18px; border-radius: 999px; font-size: 14px;
+    text-decoration: none; border: 1px solid #ddd; color: #777; background: white;
+  }
+  .pestana.activa { background: #8a8f64; border-color: #8a8f64; color: white; font-weight: bold; }
+
   .tarjeta-plantilla {
     border: 1px solid #eee; border-radius: 16px; padding: 18px 20px;
     margin-bottom: 14px; background: white;
@@ -81,6 +90,11 @@
 
 <section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
   <div style="max-width: 980px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
+
+    <div class="pestanas">
+      <a href="/admin/descuentos" class="pestana activa">Descuentos</a>
+      <a href="/admin/temporada" class="pestana">Temporada</a>
+    </div>
 
     <div style="display: flex; align-items: baseline; gap: 15px; flex-wrap: wrap;">
       <h1 style="color: #8a8f64; margin-bottom: 5px;">Descuentos por cantidad de prendas</h1>

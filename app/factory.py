@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
-from app import home, auth, cart, powerbi, admin, db
+from app import home, auth, cart, powerbi, admin, db, temporada
 import os
 import re
 
@@ -68,6 +68,10 @@ def create_app():
     async def lifespan(app: FastAPI):
         db.init_storage()
         app.state.df = home.load_data()
+        # Anotamos qué versión de la temporada corresponde a lo que
+        # acabamos de cargar, para que la primera petición no lo recargue
+        # otra vez sin motivo.
+        temporada.marcar_catalogo_cargado()
         print("✅ CSV cargado en memoria correctamente")
         yield
         # Cleanup al apagar (opcional)
@@ -76,9 +80,31 @@ def create_app():
     app = FastAPI(lifespan=lifespan)
 
     # Middleware de Autenticación
+    # Rutas que siguen funcionando con la TEMPORADA CERRADA. El admin tiene
+    # que poder entrar (y para eso, iniciar sesión) para preparar y abrir la
+    # siguiente. Lo demás se queda detrás del aviso de cerrado.
+    ABIERTAS_SIEMPRE = (
+        "/admin", "/login", "/logout", "/static", "/favicon.ico", "/api/powerbi",
+    )
+
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         path = request.url.path
+
+        # ── Temporada cerrada ─────────────────────────────────────────
+        # Va ANTES que el control de sesión: con la tienda cerrada no hay
+        # nada que mirar, tengas cuenta o no.
+        #
+        # `asegurar_catalogo` aprovecha el paso para comprobar, como mucho
+        # cada 10 segundos, si otra copia del servidor publicó una
+        # temporada nueva; si es así, recarga el catálogo de esta copia.
+        estado_temporada = temporada.estado_vigente()
+        temporada.asegurar_catalogo(request.app)
+
+        if not estado_temporada["abierta"] and not path.startswith(ABIERTAS_SIEMPRE):
+            return request.app.state.templates.TemplateResponse(
+                request, "cerrado.html", {}, status_code=503,
+            )
 
         # 1) Rutas SIEMPRE públicas (no requieren ni sesión ni ciudad).
         #    /api/powerbi se autentica con X-API-Key dentro de su router.
