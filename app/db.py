@@ -2088,3 +2088,340 @@ def exportar_directorio_csv() -> str:
                 ])
 
     return salida.getvalue()
+
+
+# ----------------------- RESERVAS: CONSULTA PARA EL PANEL -----------------
+#
+# Lo que el panel enseña en /admin/reservas. Aquí SOLO SE LEE: ni se crea,
+# ni se cambia, ni se borra una reserva. Eso lo sigue haciendo app/cart.py
+# al confirmar el carrito, exactamente igual que antes.
+#
+# DÓNDE ESTÁN LAS RESERVAS
+# ------------------------
+# En Postgres, repartidas en dos tablas con las mismas columnas salvo una:
+#
+#   reservas_family   -> las que hace un cliente desde su cuenta
+#   reservas_tiendas  -> las que hace una tienda (usuario master) a nombre
+#                        de un cliente. Tiene además `tienda_salida`.
+#
+# No hay ningún CSV de reservas: los CSV del proyecto (excluidos,
+# promociones) son otra cosa. La fuente es esta y no hay otra copia.
+#
+# UNA RESERVA SON VARIAS FILAS
+# ----------------------------
+# Cada fila es UN ARTÍCULO. Todas las de una misma reserva comparten
+# `reserva_id`, que sale de la secuencia `reservas_reserva_id_seq`, común a
+# las dos tablas: por eso un id no puede estar en las dos y se pueden unir
+# sin miedo a confundir una con otra.
+#
+# Los datos del cliente (nombre, correo, cédula...) están repetidos en cada
+# fila de la reserva, así que al agrupar se toma `min()`: son todas iguales.
+#
+# LA FECHA
+# --------
+# `fecha` se guardó con la hora de pared de Bogotá RE-ETIQUETADA como UTC
+# (ver `hora_bogota_para_guardar`). Para leerla hay que convertirla a UTC y
+# quitarle la zona; así sale la hora colombiana de verdad, igual que en el
+# comprobante PDF. Lo mismo vale para filtrar por día: los límites se
+# construyen como medianoche UTC.
+
+# Cuántas reservas se pueden pedir de una vez. El panel ofrece estas y
+# nada más: el número llega por la URL y no se compone SQL con él.
+TAMANOS_PAGINA = (25, 50, 100)
+
+# Cómo se puede ordenar. La clave viene de la URL; lo que se mete en el SQL
+# es SIEMPRE el valor de este diccionario, nunca lo que escribió nadie.
+ORDENES_RESERVAS = {
+    "fecha_desc": "fecha DESC, reserva_id DESC",
+    "fecha_asc": "fecha ASC, reserva_id ASC",
+    "valor_desc": "total DESC, reserva_id DESC",
+    "valor_asc": "total ASC, reserva_id ASC",
+}
+
+# Los mismos órdenes para la exportación, donde la consulta cruza las
+# reservas con sus líneas y hay que decir de qué tabla es cada columna.
+ORDENES_RESERVAS_CSV = {
+    clave: valor.replace("fecha", "s.fecha").replace("total", "s.total")
+                .replace("reserva_id", "s.reserva_id")
+    for clave, valor in ORDENES_RESERVAS.items()
+}
+
+ORDEN_RESERVAS_POR_DEFECTO = "fecha_desc"
+
+# Las dos tablas puestas una debajo de otra, con una columna que dice de
+# cuál vino cada fila. `tienda_salida` solo existe en una, así que en la
+# otra se rellena con NULL para que las dos tengan la misma forma.
+_SQL_LINEAS = """
+    SELECT 'clientes' AS origen, reserva_id, fecha, usuario, nombre, apellido,
+           cedula, correo, celular, direccion, ciudad_envio, referencia, talla,
+           ciudad_item, nombre_producto, precio_unitario, cantidad, subtotal,
+           codigo_referido, NULL::text AS tienda_salida, id
+      FROM reservas_family
+     UNION ALL
+    SELECT 'tiendas', reserva_id, fecha, usuario, nombre, apellido,
+           cedula, correo, celular, direccion, ciudad_envio, referencia, talla,
+           ciudad_item, nombre_producto, precio_unitario, cantidad, subtotal,
+           codigo_referido, tienda_salida, id
+      FROM reservas_tiendas
+"""
+
+# Una fila por reserva, con sus totales ya sumados y un campo `busqueda`
+# que junta todo lo que se puede teclear en el buscador (datos del cliente,
+# vendedor y también las referencias y nombres de los artículos).
+_SQL_RESERVAS = f"""
+    WITH lineas AS ({_SQL_LINEAS})
+    SELECT reserva_id,
+           min(origen)            AS origen,
+           min(fecha)             AS fecha,
+           min(usuario)           AS usuario,
+           min(nombre)            AS nombre,
+           min(apellido)          AS apellido,
+           min(cedula)            AS cedula,
+           min(correo)            AS correo,
+           min(celular)           AS celular,
+           min(direccion)         AS direccion,
+           min(ciudad_envio)      AS ciudad_envio,
+           min(codigo_referido)   AS codigo_referido,
+           min(tienda_salida)     AS tienda_salida,
+           count(*)               AS articulos,
+           COALESCE(sum(cantidad), 0)  AS unidades,
+           COALESCE(sum(subtotal), 0)  AS total,
+           array_agg(DISTINCT ciudad_item) AS ciudades,
+           lower(concat_ws(' ',
+                 min(nombre), min(apellido), min(correo), min(cedula),
+                 min(celular), min(usuario), min(codigo_referido),
+                 min(ciudad_envio), min(tienda_salida),
+                 string_agg(DISTINCT concat_ws(' ', referencia, nombre_producto), ' ')
+           )) AS busqueda
+      FROM lineas
+     GROUP BY reserva_id
+"""
+
+
+def _filtros_reservas(filtros: dict):
+    """
+    Traduce los filtros del panel a SQL. Devuelve `(where, params)`.
+
+    Todo va parametrizado: lo único que se concatena son trozos de texto
+    fijos de este archivo.
+    """
+    condiciones = []
+    params = []
+
+    texto = str((filtros or {}).get("q") or "").strip().lower()
+    if texto:
+        # Un número puede ser el id de la reserva o parte de una cédula o
+        # un teléfono, así que se buscan las dos cosas.
+        condiciones.append("(busqueda LIKE %s OR CAST(reserva_id AS text) = %s)")
+        params.extend([f"%{texto}%", texto])
+
+    desde = (filtros or {}).get("desde")
+    if desde:
+        condiciones.append("fecha >= %s")
+        params.append(desde)
+
+    hasta = (filtros or {}).get("hasta")
+    if hasta:
+        # El límite de arriba es el día siguiente a las 00:00, para que el
+        # día elegido entre entero (si no, se perdería lo de esa tarde).
+        condiciones.append("fecha < %s")
+        params.append(hasta)
+
+    ciudad = str((filtros or {}).get("ciudad") or "").strip()
+    if ciudad:
+        condiciones.append("%s = ANY(ciudades)")
+        params.append(ciudad)
+
+    origen = str((filtros or {}).get("origen") or "").strip()
+    if origen in ("clientes", "tiendas"):
+        condiciones.append("origen = %s")
+        params.append(origen)
+
+    referido = str((filtros or {}).get("referido") or "").strip()
+    if referido:
+        condiciones.append("LOWER(TRIM(COALESCE(codigo_referido, ''))) = LOWER(TRIM(%s))")
+        params.append(referido)
+
+    where = (" WHERE " + " AND ".join(condiciones)) if condiciones else ""
+    return where, params
+
+
+def _hora_bogota(fecha):
+    """
+    La hora colombiana de verdad a partir de lo que hay guardado.
+
+    Se almacenó la hora de pared de Bogotá etiquetada como UTC, así que se
+    convierte a UTC y se le quita la zona. Es lo mismo que hace
+    `obtener_reserva` para el comprobante: las dos pantallas tienen que
+    decir la misma hora.
+    """
+    if fecha is None:
+        return None
+    if getattr(fecha, "tzinfo", None) is not None:
+        fecha = fecha.astimezone(timezone.utc)
+    return fecha.replace(tzinfo=None)
+
+
+def resumen_reservas(filtros: dict = None) -> dict:
+    """
+    Los números de arriba de la pantalla, calculados sobre LO QUE SE ESTÁ
+    VIENDO (con los filtros puestos), no sobre toda la tabla.
+
+    Devuelve {reservas, unidades, valor, reservas_7dias, valor_7dias,
+    primera, ultima}.
+    """
+    where, params = _filtros_reservas(filtros)
+
+    # «Reciente» = los últimos 7 días contados desde ahora en hora de
+    # Bogotá, en el mismo huso retorcido en el que está guardada la fecha.
+    hace_siete = hora_bogota_para_guardar() - timedelta(days=7)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT count(*) AS reservas,
+                           COALESCE(sum(unidades), 0) AS unidades,
+                           COALESCE(sum(total), 0) AS valor,
+                           count(*) FILTER (WHERE fecha >= %s) AS reservas_7dias,
+                           COALESCE(sum(total) FILTER (WHERE fecha >= %s), 0) AS valor_7dias,
+                           min(fecha) AS primera,
+                           max(fecha) AS ultima
+                      FROM ({_SQL_RESERVAS}) r{where}""",
+                (hace_siete, hace_siete, *params),
+            )
+            fila = dict(cur.fetchone())
+
+    # `sum()` devuelve Decimal; se pasa a int para que las plantillas y el
+    # filtro de moneda reciban siempre un número normal.
+    for clave in ("reservas", "unidades", "valor", "reservas_7dias", "valor_7dias"):
+        fila[clave] = int(fila[clave] or 0)
+
+    fila["primera"] = _hora_bogota(fila["primera"])
+    fila["ultima"] = _hora_bogota(fila["ultima"])
+    return fila
+
+
+def listar_reservas(filtros: dict = None, orden: str = ORDEN_RESERVAS_POR_DEFECTO,
+                    pagina: int = 1, por_pagina: int = 25) -> dict:
+    """
+    Una página de reservas, ya agrupadas y con sus artículos.
+
+    Devuelve {"reservas": [...], "total": n, "pagina": n, "paginas": n}.
+    Cada reserva trae su lista `items` con las líneas de esa reserva.
+
+    Son dos consultas y no una por fila: primero la página de reservas y
+    después, de un golpe, los artículos de esas reservas.
+    """
+    orden_sql = ORDENES_RESERVAS.get(orden, ORDENES_RESERVAS[ORDEN_RESERVAS_POR_DEFECTO])
+    por_pagina = int(por_pagina) if int(por_pagina) in TAMANOS_PAGINA else TAMANOS_PAGINA[0]
+    pagina = max(1, int(pagina))
+
+    where, params = _filtros_reservas(filtros)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT count(*) AS n FROM ({_SQL_RESERVAS}) r{where}",
+                tuple(params),
+            )
+            total = int(cur.fetchone()["n"])
+
+            paginas = max(1, -(-total // por_pagina))     # techo de la división
+            pagina = min(pagina, paginas)
+
+            cur.execute(
+                f"""SELECT * FROM ({_SQL_RESERVAS}) r{where}
+                     ORDER BY {orden_sql}
+                     LIMIT %s OFFSET %s""",
+                (*params, por_pagina, (pagina - 1) * por_pagina),
+            )
+            reservas = [dict(r) for r in cur.fetchall()]
+
+            ids = [r["reserva_id"] for r in reservas]
+            lineas = []
+            if ids:
+                cur.execute(
+                    f"""SELECT * FROM ({_SQL_LINEAS}) l
+                         WHERE reserva_id = ANY(%s)
+                         ORDER BY reserva_id, id""",
+                    (ids,),
+                )
+                lineas = cur.fetchall()
+
+    por_reserva = {}
+    for linea in lineas:
+        por_reserva.setdefault(linea["reserva_id"], []).append(dict(linea))
+
+    for reserva in reservas:
+        reserva["fecha"] = _hora_bogota(reserva["fecha"])
+        reserva["ciudades"] = [c for c in (reserva.get("ciudades") or []) if c]
+        reserva["items"] = por_reserva.get(reserva["reserva_id"], [])
+        # Las sumas vienen como Decimal; números normales para la plantilla.
+        for clave in ("articulos", "unidades", "total"):
+            reserva[clave] = int(reserva[clave] or 0)
+
+    return {"reservas": reservas, "total": total, "pagina": pagina,
+            "paginas": paginas, "por_pagina": por_pagina}
+
+
+def ciudades_de_reservas() -> list:
+    """Las ciudades de inventario que aparecen en alguna reserva, para el filtro."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT DISTINCT TRIM(ciudad_item) AS ciudad
+                      FROM ({_SQL_LINEAS}) l
+                     WHERE COALESCE(TRIM(ciudad_item), '') <> ''
+                     ORDER BY 1"""
+            )
+            return [r["ciudad"] for r in cur.fetchall()]
+
+
+def exportar_reservas_csv(filtros: dict = None,
+                          orden: str = ORDEN_RESERVAS_POR_DEFECTO) -> str:
+    """
+    Las reservas que se están viendo, en CSV, una fila por ARTÍCULO.
+
+    Es el mismo detalle que se abría antes a mano, pero ya filtrado. No
+    lleva paginación a propósito: se exporta todo lo que cumple el filtro.
+    """
+    orden_sql = ORDENES_RESERVAS_CSV.get(
+        orden, ORDENES_RESERVAS_CSV[ORDEN_RESERVAS_POR_DEFECTO])
+    where, params = _filtros_reservas(filtros)
+
+    salida = io.StringIO()
+    escritor = csv.writer(salida, lineterminator="\r\n")
+    escritor.writerow([
+        "reserva_id", "fecha", "origen", "cuenta", "nombre", "apellido",
+        "cedula", "correo", "celular", "direccion", "ciudad_envio",
+        "codigo_referido", "tienda_salida", "referencia", "talla",
+        "ciudad_item", "nombre_producto", "precio_unitario", "cantidad",
+        "subtotal",
+    ])
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""WITH seleccion AS (
+                        SELECT * FROM ({_SQL_RESERVAS}) r{where}
+                    )
+                    SELECT l.*
+                      FROM seleccion s
+                      JOIN ({_SQL_LINEAS}) l ON l.reserva_id = s.reserva_id
+                     ORDER BY {orden_sql}, l.id""",
+                tuple(params),
+            )
+            for r in cur.fetchall():
+                fecha = _hora_bogota(r["fecha"])
+                escritor.writerow([
+                    r["reserva_id"],
+                    fecha.strftime("%Y-%m-%d %H:%M:%S") if fecha else "",
+                    r["origen"], r["usuario"], r["nombre"], r["apellido"],
+                    r["cedula"], r["correo"], r["celular"], r["direccion"],
+                    r["ciudad_envio"], r["codigo_referido"] or "",
+                    r["tienda_salida"] or "", r["referencia"], r["talla"],
+                    r["ciudad_item"], r["nombre_producto"],
+                    r["precio_unitario"], r["cantidad"], r["subtotal"],
+                ])
+
+    return salida.getvalue()

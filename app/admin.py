@@ -45,6 +45,8 @@ SEGURIDAD — cómo se autoriza esto
 import csv
 import io
 import re
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (HTMLResponse, JSONResponse, RedirectResponse,
@@ -1405,4 +1407,187 @@ async def confirmar_directorio_csv(request: Request, contenido: str = Form("")):
              f"&sin={hecho['cuentas_sin_codigo']}"
              f"&reub={hecho['cuentas_reubicadas']}#referidos"),
         status_code=303,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# RESERVAS
+# ──────────────────────────────────────────────────────────────────────────
+# La tercera pestaña del panel: ver las ventas sin abrir la base de datos.
+#
+# AQUÍ NO SE TOCA NADA
+# --------------------
+# Esta pantalla SOLO LEE. No crea, no edita y no borra reservas: las sigue
+# haciendo app/cart.py al confirmar el carrito, igual que siempre. Por eso
+# todas sus rutas son GET y no hay ni un POST en esta sección.
+#
+# DE DÓNDE SALEN LOS DATOS
+# ------------------------
+# De `reservas_family` y `reservas_tiendas` en Postgres, que es la única
+# copia que existe (no hay ningún CSV de reservas en el proyecto). Las dos
+# se leen juntas; cada fila es un artículo y todas las de una reserva
+# comparten `reserva_id`. El detalle está en app/db.py, sección «RESERVAS:
+# CONSULTA PARA EL PANEL».
+#
+# POR QUÉ FILTRA Y PAGINA EL SERVIDOR Y NO LA PANTALLA
+# ----------------------------------------------------
+# Hoy son 64 reservas y cabrían de sobra en la página, pero esto crece con
+# cada venta. Filtrar, ordenar, sumar y paginar en SQL cuesta lo mismo con
+# 64 que con 60.000, y la pantalla nunca recibe más de las que enseña.
+# Además, así los totales de arriba son los de TODO lo filtrado, no los de
+# la página que se está viendo.
+
+# Lo que puede pedir la URL. Se valida todo: el tamaño de página y el orden
+# se comprueban contra las listas de db.py y lo demás va parametrizado.
+FILTROS_RESERVAS = ("q", "desde", "hasta", "ciudad", "origen", "referido")
+
+
+def _fecha_filtro(texto: str, dias: int = 0):
+    """
+    Pasa un «2026-11-20» del formulario a la marca de tiempo con la que se
+    compara en la base.
+
+    Las fechas de las reservas están guardadas con la hora de pared de
+    Bogotá etiquetada como UTC, así que los límites del filtro se
+    construyen igual. `dias=1` sirve para el «hasta»: el día elegido tiene
+    que entrar entero, así que el corte es la medianoche del día siguiente.
+    """
+    texto = str(texto or "").strip()
+    if not texto:
+        return None
+    try:
+        dia = datetime.strptime(texto, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return dia.replace(tzinfo=timezone.utc) + timedelta(days=dias)
+
+
+def _filtros_reservas_de_url(request: Request) -> dict:
+    """
+    Los filtros tal como vinieron en la URL, sin interpretar.
+
+    Sirven para tres cosas: volver a pintar el formulario como lo dejó el
+    admin, construir los enlaces de las páginas sin perder lo filtrado, y
+    (ya convertidos) consultar la base.
+    """
+    return {clave: str(request.query_params.get(clave) or "").strip()
+            for clave in FILTROS_RESERVAS}
+
+
+def _consulta_reservas(crudos: dict) -> dict:
+    """De los filtros de la URL a los que entiende app/db.py."""
+    return {
+        "q": crudos["q"],
+        "desde": _fecha_filtro(crudos["desde"]),
+        "hasta": _fecha_filtro(crudos["hasta"], dias=1),
+        "ciudad": crudos["ciudad"],
+        "origen": crudos["origen"],
+        "referido": crudos["referido"],
+    }
+
+
+def _entero(valor, por_defecto: int, minimo: int = 1) -> int:
+    """
+    Un número de la URL, o el de siempre si lo que llegó no lo era.
+
+    `pagina` y `por` se reciben como texto a propósito. Declarándolos como
+    int, FastAPI contesta un 422 a `?por=abc`, y un enlace viejo o un
+    retoque a mano en la barra de direcciones dejaría al admin mirando un
+    error en vez de su pantalla.
+    """
+    try:
+        numero = int(str(valor).strip())
+    except (TypeError, ValueError):
+        return por_defecto
+    return max(minimo, numero)
+
+
+def _enlace_base(crudos: dict, orden: str, por: int) -> str:
+    """
+    La parte de la URL que comparten los enlaces de paginación y el de
+    descargar: todo lo filtrado menos el número de página.
+    """
+    partes = {k: v for k, v in crudos.items() if v}
+    partes["orden"] = orden
+    partes["por"] = str(por)
+    return urlencode(partes)
+
+
+@router.get("/reservas", response_class=HTMLResponse,
+            dependencies=[Depends(requiere_admin)])
+async def ver_reservas(request: Request, orden: str = db.ORDEN_RESERVAS_POR_DEFECTO,
+                       pagina: str = "1", por: str = "25"):
+    """
+    La lista de reservas, con sus filtros, su orden y su paginación.
+
+    Los totales de arriba se calculan sobre TODO lo que cumple el filtro,
+    no sobre la página visible: si no, cambiar de página cambiaría las
+    ventas del mes.
+    """
+    templates = request.app.state.templates
+
+    crudos = _filtros_reservas_de_url(request)
+    filtros = _consulta_reservas(crudos)
+    if orden not in db.ORDENES_RESERVAS:
+        orden = db.ORDEN_RESERVAS_POR_DEFECTO
+
+    error = None
+    resumen = {"reservas": 0, "unidades": 0, "valor": 0, "reservas_7dias": 0,
+               "valor_7dias": 0, "primera": None, "ultima": None}
+    pagina_datos = {"reservas": [], "total": 0, "pagina": 1, "paginas": 1,
+                    "por_pagina": 25}
+    ciudades = []
+
+    try:
+        resumen = db.resumen_reservas(filtros)
+        pagina_datos = db.listar_reservas(
+            filtros, orden=orden,
+            pagina=_entero(pagina, 1),
+            por_pagina=_entero(por, db.TAMANOS_PAGINA[0]),
+        )
+        ciudades = db.ciudades_de_reservas()
+    except Exception as e:
+        error = _error_bd(e)
+
+    return templates.TemplateResponse(
+        request,
+        "admin_reservas.html",
+        {
+            "resumen": resumen,
+            "pagina": pagina_datos,
+            "ciudades": ciudades,
+            "filtros": crudos,
+            "hay_filtros": any(crudos.values()),
+            "orden": orden,
+            "tamanos": db.TAMANOS_PAGINA,
+            "enlace_base": _enlace_base(crudos, orden, pagina_datos["por_pagina"]),
+            "error": error,
+        },
+    )
+
+
+@router.get("/reservas/csv", dependencies=[Depends(requiere_admin)])
+async def descargar_reservas_csv(request: Request,
+                                 orden: str = db.ORDEN_RESERVAS_POR_DEFECTO):
+    """
+    Lo que se está viendo, en CSV y con una fila por artículo.
+
+    Respeta los filtros de la pantalla y se salta la paginación: se lleva
+    todo lo que cumple el filtro, no la página.
+    """
+    filtros = _consulta_reservas(_filtros_reservas_de_url(request))
+    if orden not in db.ORDENES_RESERVAS:
+        orden = db.ORDEN_RESERVAS_POR_DEFECTO
+
+    try:
+        contenido = db.exportar_reservas_csv(filtros, orden=orden)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=_error_bd(e))
+
+    hoy = db.hora_bogota_para_guardar().strftime("%Y-%m-%d")
+    return Response(
+        content=contenido.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 f'attachment; filename="reservas_{hoy}.csv"'},
     )

@@ -1,0 +1,447 @@
+{% extends 'base.html' %}
+
+{% block title %} Reservas - Admin {% endblock %}
+
+{% block sidebar %}
+<p>Todas las ventas de la plataforma: quién reservó, qué se llevó y cuánto
+   dinero es.</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   <strong>Esta pantalla solo mira.</strong> Las reservas se crean cuando el
+   cliente confirma su carrito; desde aquí no se cambian ni se borran.
+</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Los números de arriba son los de <strong>todo lo que estás filtrando</strong>,
+   no los de la página que se ve.
+</p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Las horas son de Bogotá, las mismas que salen en el comprobante del
+   cliente.
+</p>
+{% endblock %}
+
+{% block content %}
+<style>
+  .pestanas { display: flex; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .pestana {
+    padding: 9px 18px; border-radius: 999px; font-size: 14px;
+    text-decoration: none; border: 1px solid #ddd; color: #777; background: white;
+  }
+  .pestana.activa { background: #8a8f64; border-color: #8a8f64; color: white; font-weight: bold; }
+  .caja-aviso { padding: 12px 16px; border-radius: 12px; margin-top: 16px; font-size: 14px; }
+  .caja-mal { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+
+  /* ── Indicadores ──────────────────────────────────────────────────── */
+  .cifras { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0 0; }
+  .cifra {
+    flex: 1; min-width: 150px; background: #fcfdf8; border: 1px solid #e8e8e0;
+    border-radius: 14px; padding: 14px 16px;
+  }
+  .cifra .que { font-size: 11px; color: #999; text-transform: uppercase;
+                font-weight: bold; display: block; letter-spacing: 0.5px; }
+  .cifra .cuanto { font-size: 21px; font-weight: bold; color: #333; }
+  .cifra .cuanto small { font-size: 12px; color: #888; font-weight: normal;
+                         display: block; margin-top: 2px; }
+
+  /* ── Filtros ──────────────────────────────────────────────────────── */
+  .filtros {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+    margin: 22px 0 6px; padding: 16px 18px; background: #fafaf7;
+    border: 1px solid #eee; border-radius: 16px;
+  }
+  .filtros label { font-size: 11px; color: #999; text-transform: uppercase;
+                   font-weight: bold; display: block; margin-bottom: 4px; }
+  .filtros input, .filtros select {
+    padding: 9px 12px; border: 1px solid #ddd; border-radius: 10px;
+    font-family: inherit; font-size: 14px; background: white; color: #555;
+    max-width: 100%;
+  }
+  .filtros .campo-texto { flex: 1; min-width: 200px; }
+  .filtros .campo-texto input { width: 100%; box-sizing: border-box; }
+  .filtros .btn {
+    width: auto; padding: 9px 20px; background: #8a8f64; font-size: 14px; margin: 0;
+  }
+  .filtros .limpiar { font-size: 13px; color: #888; text-decoration: underline;
+                      padding-bottom: 10px; }
+
+  /* ── Tabla ────────────────────────────────────────────────────────── */
+  .tabla-envoltura { overflow-x: auto; margin-top: 14px; }
+  table.reservas { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.reservas th {
+    text-align: left; font-size: 11px; text-transform: uppercase; color: #999;
+    letter-spacing: 0.5px; padding: 10px 12px; border-bottom: 2px solid #eee;
+    white-space: nowrap;
+  }
+  table.reservas td { padding: 11px 12px; border-bottom: 1px solid #f2f2ee;
+                      vertical-align: top; }
+  table.reservas tr.fila:hover { background: #fcfdf8; }
+  table.reservas .num { text-align: right; white-space: nowrap; }
+  table.reservas .id { font-weight: bold; color: #6e7350; }
+  table.reservas .total { font-weight: bold; color: #333; }
+  .cliente-nombre { font-weight: bold; color: #444; }
+  .cliente-correo { font-size: 12px; color: #999; word-break: break-all; }
+  .etiqueta {
+    font-size: 10px; font-weight: bold; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  }
+  .etiqueta.clientes { background: #eef0e4; color: #6e7350; }
+  .etiqueta.tiendas { background: #e3eaf3; color: #3a5a80; }
+  .ver-detalle {
+    background: none; border: 1px solid #ddd; border-radius: 999px;
+    padding: 5px 12px; font-size: 12px; color: #777; cursor: pointer;
+    width: auto; white-space: nowrap;
+  }
+  .ver-detalle:hover { border-color: #8a8f64; color: #6e7350; }
+
+  tr.detalle > td { background: #fafaf7; padding: 0 12px 16px; }
+  .detalle-caja { display: flex; gap: 22px; flex-wrap: wrap; padding-top: 4px; }
+  .detalle-datos { min-width: 230px; font-size: 13px; color: #666; line-height: 1.8; }
+  .detalle-datos .rotulo { font-size: 10px; color: #aaa; text-transform: uppercase;
+                           font-weight: bold; letter-spacing: 0.5px; }
+  .detalle-items { flex: 1; min-width: 300px; }
+  table.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.items th { font-size: 10px; color: #aaa; text-transform: uppercase;
+                   text-align: left; padding: 6px 8px; border-bottom: 1px solid #e8e8e0; }
+  table.items td { padding: 6px 8px; border-bottom: 1px solid #f0f0ea; color: #555; }
+  table.items .num { text-align: right; white-space: nowrap; }
+
+  /* ── Paginación ───────────────────────────────────────────────────── */
+  .paginacion { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+                margin-top: 18px; }
+  .paginacion a, .paginacion span {
+    padding: 7px 13px; border-radius: 999px; font-size: 13px;
+    text-decoration: none; border: 1px solid #ddd; color: #777; background: white;
+  }
+  .paginacion .actual { background: #8a8f64; border-color: #8a8f64; color: white;
+                        font-weight: bold; }
+  .paginacion .apagado { color: #ccc; border-color: #f0f0f0; }
+  .paginacion .cuenta { border: none; color: #999; padding-left: 4px; }
+
+  @media (max-width: 700px) {
+    .filtros > div { flex: 1 1 100%; }
+    table.reservas th, table.reservas td { padding: 9px 8px; }
+  }
+</style>
+
+<section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
+  <div style="max-width: 1180px; margin: 0 auto; background: white; padding: 30px; border-radius: 24px;">
+
+    <div class="pestanas">
+      <a href="/admin/descuentos" class="pestana">Descuentos</a>
+      <a href="/admin/temporada" class="pestana">Temporada</a>
+      <a href="/admin/reservas" class="pestana activa">Reservas</a>
+    </div>
+
+    <h1 style="color: #8a8f64; margin: 10px 0 4px;">Reservas</h1>
+    <p style="color: #999; margin: 0; font-size: 0.85rem;">
+      Todo lo que han reservado los clientes y las tiendas. Esta pantalla solo
+      consulta: las reservas no se cambian desde aquí.
+    </p>
+
+    {% if error %}<div class="caja-aviso caja-mal">{{ error }}</div>{% endif %}
+
+    <!-- ── Indicadores ────────────────────────────────────────────────── -->
+    {#
+       Se calculan sobre todo lo filtrado, no sobre la página: cambiar de
+       página no puede cambiar cuánto se ha vendido.
+    #}
+    <div class="cifras">
+      <div class="cifra">
+        <span class="que">{% if hay_filtros %}Reservas filtradas{% else %}Reservas{% endif %}</span>
+        <span class="cuanto">{{ "{:,}".format(resumen.reservas).replace(",", ".") }}
+          {% if resumen.primera and resumen.ultima %}
+          <small>de {{ resumen.primera.strftime('%d/%m/%Y') }} a
+                 {{ resumen.ultima.strftime('%d/%m/%Y') }}</small>
+          {% endif %}
+        </span>
+      </div>
+      <div class="cifra">
+        <span class="que">Unidades</span>
+        <span class="cuanto">{{ "{:,}".format(resumen.unidades).replace(",", ".") }}
+          <small>artículos reservados</small></span>
+      </div>
+      <div class="cifra">
+        <span class="que">Valor</span>
+        <span class="cuanto">{{ resumen.valor|currency }}
+          <small>suma de los subtotales</small></span>
+      </div>
+      <div class="cifra">
+        <span class="que">Últimos 7 días</span>
+        <span class="cuanto">{{ "{:,}".format(resumen.reservas_7dias).replace(",", ".") }}
+          <small>{{ resumen.valor_7dias|currency }}</small></span>
+      </div>
+    </div>
+
+    <!-- ── Filtros ────────────────────────────────────────────────────── -->
+    <form method="get" action="/admin/reservas" class="filtros">
+      <div class="campo-texto">
+        <label for="f-q">Buscar</label>
+        <input type="search" id="f-q" name="q" value="{{ filtros.q }}"
+               placeholder="Nombre, correo, cédula, celular, vendedor, referencia o n.º"
+               autocomplete="off">
+      </div>
+      <div>
+        <label for="f-desde">Desde</label>
+        <input type="date" id="f-desde" name="desde" value="{{ filtros.desde }}">
+      </div>
+      <div>
+        <label for="f-hasta">Hasta</label>
+        <input type="date" id="f-hasta" name="hasta" value="{{ filtros.hasta }}">
+      </div>
+      <div>
+        <label for="f-ciudad">Ciudad del inventario</label>
+        <select id="f-ciudad" name="ciudad">
+          <option value="">Todas</option>
+          {% for c in ciudades %}
+          <option value="{{ c }}" {% if c == filtros.ciudad %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="f-origen">Quién reservó</label>
+        <select id="f-origen" name="origen">
+          <option value="">Todos</option>
+          <option value="clientes" {% if filtros.origen == 'clientes' %}selected{% endif %}>Clientes</option>
+          <option value="tiendas" {% if filtros.origen == 'tiendas' %}selected{% endif %}>Tiendas</option>
+        </select>
+      </div>
+      <div>
+        <label for="f-orden">Ordenar por</label>
+        <select id="f-orden" name="orden">
+          <option value="fecha_desc" {% if orden == 'fecha_desc' %}selected{% endif %}>Más recientes</option>
+          <option value="fecha_asc" {% if orden == 'fecha_asc' %}selected{% endif %}>Más antiguas</option>
+          <option value="valor_desc" {% if orden == 'valor_desc' %}selected{% endif %}>Mayor valor</option>
+          <option value="valor_asc" {% if orden == 'valor_asc' %}selected{% endif %}>Menor valor</option>
+        </select>
+      </div>
+      <div>
+        <label for="f-por">Por página</label>
+        <select id="f-por" name="por">
+          {% for t in tamanos %}
+          <option value="{{ t }}" {% if t == pagina.por_pagina %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {# El filtro por vendedor no tiene campo propio: se llega a él desde el
+         código de la tabla, y viaja escondido para no perderse al filtrar. #}
+      {% if filtros.referido %}
+      <input type="hidden" name="referido" value="{{ filtros.referido }}">
+      {% endif %}
+      <div>
+        <button type="submit" class="btn">Filtrar</button>
+      </div>
+      {% if hay_filtros %}
+      <div><a href="/admin/reservas" class="limpiar">Limpiar</a></div>
+      {% endif %}
+    </form>
+
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+                margin-top: 10px; font-size: 13px; color: #999;">
+      {% if filtros.referido %}
+      <span>Vendedor: <strong style="color: #6e7350;">{{ filtros.referido }}</strong></span>
+      {% endif %}
+      <a href="/admin/reservas/csv{% if enlace_base %}?{{ enlace_base }}{% endif %}"
+         style="color: #8a8f64; margin-left: auto;">
+        Descargar en CSV ({{ "{:,}".format(resumen.reservas).replace(",", ".") }}
+        reserva{% if resumen.reservas != 1 %}s{% endif %})
+      </a>
+    </div>
+
+    <!-- ── La tabla ───────────────────────────────────────────────────── -->
+    {% if not pagina.reservas %}
+    <p style="color: #999; font-style: italic; margin-top: 26px;">
+      {% if error %}
+        No se pudieron leer las reservas.
+      {% elif hay_filtros %}
+        Ninguna reserva coincide con lo que buscas.
+      {% else %}
+        Todavía no hay ninguna reserva.
+      {% endif %}
+    </p>
+    {% else %}
+
+    <div class="tabla-envoltura">
+      <table class="reservas">
+        <thead>
+          <tr>
+            <th>N.º</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Vendedor</th>
+            <th>Ciudad</th>
+            <th class="num">Artículos</th>
+            <th class="num">Unidades</th>
+            <th class="num">Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in pagina.reservas %}
+          <tr class="fila">
+            <td class="id">{{ r.reserva_id }}</td>
+            <td style="white-space: nowrap;">
+              {{ r.fecha.strftime('%d/%m/%Y') if r.fecha else '—' }}
+              <div style="font-size: 12px; color: #aaa;">
+                {{ r.fecha.strftime('%I:%M %p') if r.fecha else '' }}
+              </div>
+            </td>
+            <td>
+              <div class="cliente-nombre">{{ r.nombre }} {{ r.apellido }}</div>
+              <div class="cliente-correo">{{ r.correo }}</div>
+              {% if r.origen == 'tiendas' %}
+              <span class="etiqueta tiendas">Tienda</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.codigo_referido %}
+              <a href="/admin/reservas?referido={{ r.codigo_referido|urlencode }}"
+                 style="color: #6e7350;">{{ r.codigo_referido }}</a>
+              {% else %}
+              <span style="color: #ccc;">—</span>
+              {% endif %}
+            </td>
+            <td>{{ r.ciudades|join(', ') }}</td>
+            <td class="num">{{ r.articulos }}</td>
+            <td class="num">{{ r.unidades }}</td>
+            <td class="num total">{{ r.total|currency }}</td>
+            <td>
+              <button type="button" class="ver-detalle"
+                      data-reserva="{{ r.reserva_id }}"
+                      aria-expanded="false"
+                      aria-controls="detalle-{{ r.reserva_id }}">Ver</button>
+            </td>
+          </tr>
+          <tr class="detalle" id="detalle-{{ r.reserva_id }}">
+            <td colspan="9">
+              <div class="detalle-caja">
+                <div class="detalle-datos">
+                  <span class="rotulo">Datos de la reserva</span><br>
+                  <strong>Cédula:</strong> {{ r.cedula or '—' }}<br>
+                  <strong>Celular:</strong> {{ r.celular or '—' }}<br>
+                  <strong>Dirección:</strong> {{ r.direccion or '—' }}<br>
+                  <strong>Ciudad de envío:</strong> {{ r.ciudad_envio or '—' }}<br>
+                  <strong>Cuenta:</strong> {{ r.usuario }}<br>
+                  {% if r.tienda_salida %}
+                  <strong>Tienda de salida:</strong> {{ r.tienda_salida }}<br>
+                  {% endif %}
+                  <strong>Reservó:</strong>
+                  {% if r.origen == 'tiendas' %}una tienda{% else %}el cliente{% endif %}
+                </div>
+                <div class="detalle-items">
+                  <span class="rotulo" style="font-size: 10px; color: #aaa;
+                        text-transform: uppercase; font-weight: bold;">
+                    Artículos
+                  </span>
+                  <table class="items">
+                    <thead>
+                      <tr>
+                        <th>Referencia</th>
+                        <th>Producto</th>
+                        <th>Talla</th>
+                        <th>Ciudad</th>
+                        <th class="num">Precio</th>
+                        <th class="num">Cant.</th>
+                        <th class="num">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for it in r['items'] %}
+                      <tr>
+                        <td>{{ it.referencia }}</td>
+                        <td>{{ it.nombre_producto }}</td>
+                        <td>{{ it.talla }}</td>
+                        <td>{{ it.ciudad_item }}</td>
+                        <td class="num">{{ it.precio_unitario|currency }}</td>
+                        <td class="num">{{ it.cantidad }}</td>
+                        <td class="num">{{ it.subtotal|currency }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Paginación ─────────────────────────────────────────────────── -->
+    {% set sep = '&' if enlace_base else '' %}
+    <div class="paginacion">
+      {% if pagina.pagina > 1 %}
+      <a href="/admin/reservas?{{ enlace_base }}{{ sep }}pagina={{ pagina.pagina - 1 }}">← Anterior</a>
+      {% else %}
+      <span class="apagado">← Anterior</span>
+      {% endif %}
+
+      {# Una ventana de páginas alrededor de la actual: con muchas páginas,
+         pintarlas todas no cabe y no sirve de nada. #}
+      {% set desde_p = [1, pagina.pagina - 2]|max %}
+      {% set hasta_p = [pagina.paginas, pagina.pagina + 2]|min %}
+      {% if desde_p > 1 %}
+      <a href="/admin/reservas?{{ enlace_base }}{{ sep }}pagina=1">1</a>
+      {% if desde_p > 2 %}<span class="apagado">…</span>{% endif %}
+      {% endif %}
+
+      {% for p in range(desde_p, hasta_p + 1) %}
+      {% if p == pagina.pagina %}
+      <span class="actual">{{ p }}</span>
+      {% else %}
+      <a href="/admin/reservas?{{ enlace_base }}{{ sep }}pagina={{ p }}">{{ p }}</a>
+      {% endif %}
+      {% endfor %}
+
+      {% if hasta_p < pagina.paginas %}
+      {% if hasta_p < pagina.paginas - 1 %}<span class="apagado">…</span>{% endif %}
+      <a href="/admin/reservas?{{ enlace_base }}{{ sep }}pagina={{ pagina.paginas }}">{{ pagina.paginas }}</a>
+      {% endif %}
+
+      {% if pagina.pagina < pagina.paginas %}
+      <a href="/admin/reservas?{{ enlace_base }}{{ sep }}pagina={{ pagina.pagina + 1 }}">Siguiente →</a>
+      {% else %}
+      <span class="apagado">Siguiente →</span>
+      {% endif %}
+
+      <span class="cuenta">
+        Página {{ pagina.pagina }} de {{ pagina.paginas }} ·
+        {{ "{:,}".format(pagina.total).replace(",", ".") }}
+        reserva{% if pagina.total != 1 %}s{% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+  </div>
+</section>
+
+<script>
+/*
+  Abrir y cerrar el detalle de una reserva. Las filas de detalle se pintan
+  siempre (así el buscador del navegador las encuentra) y se esconden con
+  CSS; sin JavaScript se quedan todas a la vista, que es más útil que no
+  poder abrirlas.
+*/
+(function () {
+  var tabla = document.querySelector('table.reservas');
+  if (!tabla) return;
+
+  // Se esconden desde el JavaScript y no desde la hoja de estilos: si este
+  // script no corre, el detalle tiene que seguir viéndose.
+  var detalles = Array.prototype.slice.call(tabla.querySelectorAll('tr.detalle'));
+  detalles.forEach(function (fila) { fila.style.display = 'none'; });
+
+  tabla.addEventListener('click', function (e) {
+    var boton = e.target.closest ? e.target.closest('.ver-detalle') : null;
+    if (!boton) return;
+
+    var fila = document.getElementById('detalle-' + boton.dataset.reserva);
+    if (!fila) return;
+
+    var abierta = fila.style.display !== 'none';
+    fila.style.display = abierta ? 'none' : 'table-row';
+    boton.setAttribute('aria-expanded', abierta ? 'false' : 'true');
+    boton.textContent = abierta ? 'Ver' : 'Cerrar';
+  });
+})();
+</script>
+{% endblock %}
