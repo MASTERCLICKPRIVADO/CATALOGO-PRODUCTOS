@@ -1515,3 +1515,338 @@ def cerrar_temporada(usuario: str):
             cur.execute("UPDATE temporada SET abierta = false WHERE id IS TRUE")
             _bump(cur, usuario)
             _auditar(cur, usuario, "cerrar_temporada", {})
+
+
+# ----------------------- CÓDIGOS DE REFERIDO -----------------------
+#
+# El directorio de empleados (`directorio_empleados`: codigo, nombre, ciudad)
+# ES la tabla de códigos de referido. No hay otra, y aquí no se crea ninguna:
+# estas funciones son solo la puerta para leerla y escribirla desde el panel,
+# que antes había que abrir a mano en Supabase.
+#
+# DE QUÉ DEPENDE CADA COLUMNA
+# ---------------------------
+#   codigo  -> es lo que el cliente teclea en /login y /registro. Se valida
+#              contra esta tabla (`obtener_referido`, sin distinguir
+#              mayúsculas) y se guarda tal cual en `usuarios.codigo_referido`
+#              y, al reservar, en `reservas_family.codigo_referido`.
+#   ciudad  -> decide QUÉ INVENTARIO ve quien entra con ese código: en el
+#              login se copia a `usuarios.ciudad` y de ahí sale el filtro de
+#              catálogo (app/home.py `aplicar_scope_ciudad`).
+#   nombre  -> a quién pertenece el código. Informativo.
+#
+# POR QUÉ EL CRUCE CON `usuarios` VA CON LOWER(TRIM(...))
+# ------------------------------------------------------
+# `usuarios.codigo_referido` guarda el código CON LAS MAYÚSCULAS QUE TECLEÓ
+# el cliente ('ntapias', 'Ntapias', 'NTAPIAS' conviven en la tabla), porque
+# el login valida sin distinguirlas. Así que cualquier cruce entre las dos
+# tablas tiene que normalizar los dos lados o se pierden filas.
+
+# Cuántos correos se enseñan por código en el panel. Son un ejemplo de quién
+# lo está usando, no la lista completa: el total va aparte.
+MAX_USUARIOS_POR_CODIGO = 25
+
+# Tope de códigos que devuelve el panel de una vez. El directorio son ~40
+# filas; el tope está para que una tabla que crezca sin medida no reviente
+# la pantalla.
+MAX_REFERIDOS = 500
+
+
+def listar_referidos() -> list:
+    """
+    El directorio entero, con a quién pertenece cada código y cuánta gente
+    lo está usando.
+
+    Devuelve [{codigo, nombre, ciudad, usuarios, correos, reservas}, ...]
+    ordenado por ciudad y nombre:
+      - usuarios -> cuántas cuentas tienen ese código asignado ahora mismo
+      - correos  -> hasta MAX_USUARIOS_POR_CODIGO de esas cuentas, de ejemplo
+      - reservas -> cuántas reservas se hicieron con ese código (histórico)
+
+    Todo en una sola consulta: el panel pinta las ~40 filas de un golpe y no
+    conviene hacer dos viajes por fila.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT d.codigo, d.nombre, d.ciudad,
+                       COALESCE(u.n, 0) AS usuarios,
+                       COALESCE(u.correos, ARRAY[]::text[]) AS correos,
+                       COALESCE(r.n, 0) AS reservas
+                  FROM directorio_empleados d
+                  LEFT JOIN (
+                        SELECT LOWER(TRIM(codigo_referido)) AS k,
+                               count(*) AS n,
+                               (array_agg(usuario ORDER BY usuario))[1:%s] AS correos
+                          FROM usuarios
+                         WHERE COALESCE(TRIM(codigo_referido), '') <> ''
+                         GROUP BY 1
+                  ) u ON u.k = LOWER(TRIM(d.codigo))
+                  LEFT JOIN (
+                        SELECT k, count(DISTINCT marca) AS n
+                          FROM (
+                            SELECT LOWER(TRIM(codigo_referido)) AS k,
+                                   'f' || reserva_id::text AS marca
+                              FROM reservas_family
+                            UNION ALL
+                            SELECT LOWER(TRIM(codigo_referido)) AS k,
+                                   't' || reserva_id::text AS marca
+                              FROM reservas_tiendas
+                          ) t
+                         WHERE COALESCE(k, '') <> ''
+                         GROUP BY 1
+                  ) r ON r.k = LOWER(TRIM(d.codigo))
+                 ORDER BY d.ciudad, d.nombre, d.codigo
+                 LIMIT %s
+                """,
+                (int(MAX_USUARIOS_POR_CODIGO), int(MAX_REFERIDOS)),
+            )
+            return cur.fetchall()
+
+
+def contar_referidos() -> int:
+    """Cuántos códigos hay en el directorio (para saber si el tope recortó)."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) AS n FROM directorio_empleados")
+            return int(cur.fetchone()["n"])
+
+
+def referidos_huerfanos() -> list:
+    """
+    Códigos que algunas cuentas tienen guardados y que YA NO están en el
+    directorio (empleados que se borraron de la tabla en su momento).
+
+    No rompen nada —el cliente teclea un código válido en su siguiente
+    login— pero explican por qué un código aparece en las reservas y no en
+    esta pantalla. Se enseñan para que el admin decida si vuelve a crearlos.
+
+    Devuelve [{codigo, usuarios}, ...] con el código ya en minúsculas,
+    porque es el agrupador.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT LOWER(TRIM(u.codigo_referido)) AS codigo,
+                          count(*) AS usuarios
+                     FROM usuarios u
+                    WHERE COALESCE(TRIM(u.codigo_referido), '') <> ''
+                      AND NOT EXISTS (
+                            SELECT 1 FROM directorio_empleados d
+                             WHERE LOWER(TRIM(d.codigo)) = LOWER(TRIM(u.codigo_referido))
+                      )
+                    GROUP BY 1
+                    ORDER BY 2 DESC, 1
+                    LIMIT 50"""
+            )
+            return cur.fetchall()
+
+
+def ciudades_conocidas() -> list:
+    """
+    Las ciudades que existen de verdad: las del catálogo publicado más las
+    que ya usa el directorio.
+
+    El panel no deja asignarle a un código una ciudad que no esté aquí. No
+    es un capricho: la ciudad del código es la que filtra el catálogo, así
+    que un «Bogotá» mal escrito deja al cliente mirando una tienda vacía
+    sin que nada parezca roto.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT ciudad FROM (
+                         SELECT DISTINCT TRIM(ciudad) AS ciudad FROM data
+                          WHERE COALESCE(TRIM(ciudad), '') <> ''
+                         UNION
+                         SELECT DISTINCT TRIM(ciudad) AS ciudad FROM directorio_empleados
+                          WHERE COALESCE(TRIM(ciudad), '') <> ''
+                   ) t ORDER BY ciudad"""
+            )
+            return [r["ciudad"] for r in cur.fetchall()]
+
+
+def _referido_por_codigo(cur, codigo: str):
+    """La fila exacta del directorio, bloqueada para el resto de la transacción."""
+    cur.execute(
+        """SELECT codigo, nombre, ciudad
+             FROM directorio_empleados
+            WHERE codigo = %s
+            FOR UPDATE""",
+        (str(codigo),),
+    )
+    return cur.fetchone()
+
+
+def _codigo_ocupado(cur, codigo: str, excepto: str = None) -> bool:
+    """
+    ¿Hay ya un código igual ignorando mayúsculas y espacios?
+
+    La clave primaria solo impide el duplicado EXACTO, pero el login busca
+    sin distinguir mayúsculas (`obtener_referido`), así que 'JPEREZ' y
+    'jperez' serían dos filas y el login se quedaría con una cualquiera.
+    Aquí se cierra esa puerta.
+    """
+    if excepto is None:
+        cur.execute(
+            """SELECT 1 FROM directorio_empleados
+                WHERE LOWER(TRIM(codigo)) = LOWER(TRIM(%s)) LIMIT 1""",
+            (str(codigo),),
+        )
+    else:
+        cur.execute(
+            """SELECT 1 FROM directorio_empleados
+                WHERE LOWER(TRIM(codigo)) = LOWER(TRIM(%s))
+                  AND codigo <> %s
+                LIMIT 1""",
+            (str(codigo), str(excepto)),
+        )
+    return cur.fetchone() is not None
+
+
+def crear_referido(codigo: str, nombre: str, ciudad: str, usuario: str) -> dict:
+    """
+    Agrega un código al directorio. Desde ese momento sirve para entrar.
+
+    Devuelve {"ok": True} o {"ok": False, "motivo": "duplicado"}.
+    """
+    codigo = str(codigo).strip()
+    nombre = str(nombre).strip()
+    ciudad = str(ciudad).strip()
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if _codigo_ocupado(cur, codigo):
+                return {"ok": False, "motivo": "duplicado"}
+
+            cur.execute(
+                """INSERT INTO directorio_empleados (codigo, nombre, ciudad)
+                   VALUES (%s, %s, %s)""",
+                (codigo, nombre, ciudad),
+            )
+            _auditar(cur, usuario, "crear_referido", {
+                "codigo": codigo, "nombre": nombre, "ciudad": ciudad,
+            })
+
+    return {"ok": True}
+
+
+def actualizar_referido(codigo_original: str, codigo: str, nombre: str,
+                        ciudad: str, usuario: str) -> dict:
+    """
+    Guarda los cambios de un código del directorio ARRASTRANDO CON ÉL a las
+    cuentas que lo tienen asignado, todo en una transacción.
+
+    Qué se arrastra y por qué:
+      - Si cambia el `codigo`, se reescribe `usuarios.codigo_referido` de
+        quien lo tuviera. Si no, esas cuentas se quedarían apuntando a un
+        código que ya no existe.
+      - Si cambia la `ciudad`, se reescribe `usuarios.ciudad` de quien tenga
+        el código, porque esa columna es la que filtra el catálogo y debe
+        decir lo mismo que el directorio.
+      - Las reservas ya hechas NO se tocan. `reservas_*.codigo_referido` es
+        el registro de con qué código se vendió ese día; reescribirlo sería
+        cambiar el histórico.
+
+    Ojo con las sesiones abiertas: la ciudad también vive en la cookie de
+    sesión, que se rellena al iniciar sesión. Quien esté navegando en ese
+    momento seguirá viendo la ciudad anterior hasta que vuelva a entrar.
+
+    Devuelve {"ok": True, "recodificados": n, "reubicados": n, "antes": {...}}
+    o {"ok": False, "motivo": "no_existe" | "duplicado"}.
+    """
+    codigo = str(codigo).strip()
+    nombre = str(nombre).strip()
+    ciudad = str(ciudad).strip()
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            antes = _referido_por_codigo(cur, codigo_original)
+            if not antes:
+                return {"ok": False, "motivo": "no_existe"}
+
+            cambia_codigo = codigo != str(antes["codigo"])
+            cambia_ciudad = ciudad != str(antes["ciudad"] or "").strip()
+
+            if cambia_codigo and _codigo_ocupado(cur, codigo, excepto=antes["codigo"]):
+                return {"ok": False, "motivo": "duplicado"}
+
+            cur.execute(
+                """UPDATE directorio_empleados
+                      SET codigo = %s, nombre = %s, ciudad = %s
+                    WHERE codigo = %s""",
+                (codigo, nombre, ciudad, antes["codigo"]),
+            )
+
+            recodificados = 0
+            if cambia_codigo:
+                cur.execute(
+                    """UPDATE usuarios
+                          SET codigo_referido = %s
+                        WHERE LOWER(TRIM(codigo_referido)) = LOWER(TRIM(%s))""",
+                    (codigo, antes["codigo"]),
+                )
+                recodificados = cur.rowcount or 0
+
+            reubicados = 0
+            if cambia_ciudad:
+                # Después del renombrado: se buscan por el código NUEVO.
+                cur.execute(
+                    """UPDATE usuarios
+                          SET ciudad = %s
+                        WHERE LOWER(TRIM(codigo_referido)) = LOWER(TRIM(%s))
+                          AND COALESCE(TRIM(ciudad), '') <> %s""",
+                    (ciudad, codigo, ciudad),
+                )
+                reubicados = cur.rowcount or 0
+
+            _auditar(cur, usuario, "guardar_referido", {
+                "antes": dict(antes),
+                "despues": {"codigo": codigo, "nombre": nombre, "ciudad": ciudad},
+                "usuarios_recodificados": recodificados,
+                "usuarios_reubicados": reubicados,
+            })
+
+    return {"ok": True, "recodificados": recodificados,
+            "reubicados": reubicados, "antes": dict(antes)}
+
+
+def borrar_referido(codigo: str, usuario: str) -> dict:
+    """
+    Quita un código del directorio. Deja de servir para entrar.
+
+    A las cuentas que lo tuvieran se les deja `codigo_referido` en NULL: en
+    su siguiente inicio de sesión tendrán que teclear uno válido, como las
+    cuentas que ya estaban así. No se les toca la ciudad, para que quien
+    esté navegando no cambie de tienda a media compra.
+
+    Las reservas hechas con ese código se quedan como están: son histórico.
+
+    Devuelve {"ok": True, "usuarios": n, "fila": {...}} o
+    {"ok": False, "motivo": "no_existe"}.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            fila = _referido_por_codigo(cur, codigo)
+            if not fila:
+                return {"ok": False, "motivo": "no_existe"}
+
+            cur.execute(
+                """UPDATE usuarios
+                      SET codigo_referido = NULL
+                    WHERE LOWER(TRIM(codigo_referido)) = LOWER(TRIM(%s))""",
+                (fila["codigo"],),
+            )
+            sueltos = cur.rowcount or 0
+
+            cur.execute(
+                "DELETE FROM directorio_empleados WHERE codigo = %s",
+                (fila["codigo"],),
+            )
+
+            _auditar(cur, usuario, "borrar_referido", {
+                "fila": dict(fila), "usuarios_sin_codigo": sueltos,
+            })
+
+    return {"ok": True, "usuarios": sueltos, "fila": dict(fila)}

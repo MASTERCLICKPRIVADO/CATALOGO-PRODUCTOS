@@ -42,6 +42,8 @@ SEGURIDAD — cómo se autoriza esto
    nuevo. Esto toca el precio que ve el cliente: tiene que quedar rastro.
 """
 
+import re
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -629,6 +631,10 @@ async def guardar_plantilla(request: Request, plantilla_id: int):
 # recargar igual despues.
 
 MENSAJES_TEMPORADA = {
+    "ref_creado": "Código de referido creado. Ya sirve para iniciar sesión.",
+    "ref_guardado": "Código de referido guardado.",
+    "ref_borrado": ("Código de referido eliminado. Ya no sirve para iniciar "
+                    "sesión."),
     "catalogo": "Catálogo cargado. Revísalo abajo y publícalo cuando quieras.",
     "excluidos": "Excluidos cargados. Revísalos abajo y publícalos cuando quieras.",
     "parrafo": "Párrafo guardado. Se publicará con la temporada.",
@@ -645,7 +651,8 @@ MENSAJES_TEMPORADA = {
 TOPE_LECTURA = temporada_mod.MAX_BYTES + 1
 
 
-def _render_temporada(request: Request, *, error=None, msg=None, avisos=None):
+def _render_temporada(request: Request, *, error=None, msg=None, avisos=None,
+                      referido_error=None, referido_form=None):
     templates = request.app.state.templates
 
     estado = db.obtener_estado_temporada()
@@ -660,6 +667,19 @@ def _render_temporada(request: Request, *, error=None, msg=None, avisos=None):
     except Exception:
         catalogo_actual = 0
 
+    # Los códigos de referido viven en esta misma pantalla, en su propio
+    # bloque al final. Si su consulta falla, el resto de la pantalla sigue
+    # sirviendo: el aviso sale dentro de ese bloque y la lista queda vacía,
+    # en vez de tumbar la gestión de la temporada.
+    referidos, huerfanos, ciudades, referidos_total = [], [], [], 0
+    try:
+        referidos = db.listar_referidos()
+        referidos_total = db.contar_referidos()
+        ciudades = db.ciudades_conocidas()
+        huerfanos = db.referidos_huerfanos()
+    except Exception as e:
+        referido_error = referido_error or _error_bd(e)
+
     return templates.TemplateResponse(
         request,
         "admin_temporada.html",
@@ -673,14 +693,34 @@ def _render_temporada(request: Request, *, error=None, msg=None, avisos=None):
             "max_mb": temporada_mod.MAX_BYTES // 1024 // 1024,
             "max_parrafo": temporada_mod.MAX_LARGO_PARRAFO,
             "parrafo_publicado": (db.obtener_promocion_activa() or {}).get("descripcion", ""),
+            # Códigos de referido (ver la sección REFERIDOS más abajo).
+            "referidos": referidos,
+            "referidos_total": referidos_total,
+            "referidos_tope": db.MAX_REFERIDOS,
+            "referidos_huerfanos": huerfanos,
+            "ciudades": ciudades,
+            "referido_error": referido_error,
+            "referido_form": referido_form or {},
+            "max_largo_codigo": MAX_LARGO_CODIGO,
+            "max_largo_empleado": MAX_LARGO_EMPLEADO,
+            "max_usuarios_por_codigo": db.MAX_USUARIOS_POR_CODIGO,
         },
     )
 
 
 @router.get("/temporada", response_class=HTMLResponse,
             dependencies=[Depends(requiere_admin)])
-async def ver_temporada(request: Request, msg: str = "", error: str = ""):
-    return _render_temporada(request, msg=MENSAJES_TEMPORADA.get(msg),
+async def ver_temporada(request: Request, msg: str = "", error: str = "",
+                        ren: int = 0, reub: int = 0, sin: int = 0):
+    """
+    Pinta la pantalla de temporada (y, al final, los códigos de referido).
+
+    `ren`, `reub` y `sin` son los números que dejó el POST de un referido en
+    el redirect: cuántas cuentas se renombraron, cuántas cambiaron de ciudad
+    y cuántas quedaron sin código. Viajan como enteros, no como texto, para
+    que el mensaje lo arme el servidor y no se pueda inyectar nada por la URL.
+    """
+    return _render_temporada(request, msg=_mensaje_temporada(msg, ren, reub, sin),
                              error=error or None)
 
 
@@ -821,3 +861,254 @@ async def cerrar(request: Request):
 
     temporada_mod.invalidar_cache()
     return RedirectResponse(url="/admin/temporada?msg=cerrada", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# CÓDIGOS DE REFERIDO
+# ──────────────────────────────────────────────────────────────────────────
+# El directorio de empleados (`directorio_empleados`) es la tabla de códigos
+# de referido: el código que el cliente teclea en /login y /registro se valida
+# contra ella y su CIUDAD es la que decide qué inventario verá. Hasta ahora
+# solo se podía tocar entrando a Supabase; esto es la misma tabla, editable
+# desde el panel.
+#
+# POR QUÉ VIVE DENTRO DE /admin/temporada
+# ---------------------------------------
+# Es la pantalla donde ya se administra la data de la página (catálogo,
+# excluidos, párrafo). No se abrió una pestaña aparte a propósito: es un
+# bloque más de esa misma pantalla, con su misma navegación y sus mismos
+# estilos.
+#
+# PERO AQUÍ NO HAY «PREPARAR Y PUBLICAR»
+# --------------------------------------
+# El resto de esa pantalla guarda aparte y solo cambia la tienda al publicar.
+# Los referidos NO: lo que se guarda aquí vale desde ese momento, porque es
+# el directorio contra el que se valida cada login. La pantalla lo dice en
+# letra junto al bloque, para que no se confunda con los archivos de arriba.
+#
+# QUÉ SE ARRASTRA AL EDITAR
+# -------------------------
+# Lo decide db.actualizar_referido (ahí está el detalle): renombrar un código
+# lo reescribe en las cuentas que lo tenían, y cambiarle la ciudad reescribe
+# la ciudad de esas cuentas. Las reservas ya hechas no se tocan nunca: son el
+# histórico de con qué código se vendió.
+#
+# SEGURIDAD
+# ---------
+# Las rutas cuelgan de este mismo router, así que pasan por `requiere_admin`
+# igual que todo lo demás: el permiso se lee de Postgres en cada petición, no
+# de la cookie. Las consultas van parametrizadas (nunca se compone el SQL con
+# lo que llegó del formulario) y el código se valida contra una lista blanca
+# de caracteres antes de tocar la BD. Las claves de Supabase siguen solo en
+# el servidor: la pantalla no habla con la BD, habla con estas rutas.
+
+MIN_LARGO_CODIGO = 2
+MAX_LARGO_CODIGO = 30
+MAX_LARGO_EMPLEADO = 80
+
+# Lista blanca de lo que puede llevar un código: letras, números, punto,
+# guion y guion bajo. El directorio ya tiene códigos con punto
+# ('jr.cardenas') y no hace falta más. Sin espacios: el login hace TRIM en
+# los extremos, pero uno en el medio sería un código imposible de teclear
+# dos veces igual.
+PATRON_CODIGO = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def _cuentas(n: int) -> str:
+    """«1 cuenta» / «7 cuentas», para no escribir «1 cuenta(s)»."""
+    return "1 cuenta" if int(n) == 1 else f"{int(n)} cuentas"
+
+
+def _mensaje_temporada(clave: str, ren: int = 0, reub: int = 0, sin: int = 0):
+    """
+    El mensaje verde de la pantalla de temporada.
+
+    Para los referidos se le pegan las consecuencias que tuvo el cambio
+    (cuántas cuentas se renombraron, cuántas cambiaron de ciudad, cuántas
+    quedaron sin código), que es justo lo que el admin no puede ver solo
+    mirando la fila que acaba de guardar.
+    """
+    base = MENSAJES_TEMPORADA.get(clave)
+    if not base:
+        return None
+
+    extras = []
+    if clave == "ref_guardado":
+        if ren:
+            extras.append(f"El código nuevo quedó en {_cuentas(ren)}.")
+        if reub == 1:
+            extras.append("1 cuenta pasó a la ciudad nueva y verá ese "
+                          "catálogo en su próximo inicio de sesión.")
+        elif reub:
+            extras.append(f"{reub} cuentas pasaron a la ciudad nueva y verán "
+                          f"ese catálogo en su próximo inicio de sesión.")
+        if not ren and not reub:
+            extras.append("Ninguna cuenta se vio afectada.")
+    elif clave == "ref_borrado" and sin:
+        if sin == 1:
+            extras.append("1 cuenta quedó sin código: tendrá que ingresar uno "
+                          "válido la próxima vez que entre.")
+        else:
+            extras.append(f"{sin} cuentas quedaron sin código: tendrán que "
+                          f"ingresar uno válido la próxima vez que entren.")
+
+    return " ".join([base] + extras)
+
+
+def validar_referido(codigo, nombre, ciudad, ciudades):
+    """
+    Limpia y comprueba lo que llegó del formulario.
+
+    Devuelve `(codigo, nombre, ciudad, error)`. El error es un mensaje para
+    el admin; si viene, no se toca la base de datos.
+
+    La ciudad tiene que ser una de las que existen de verdad
+    (`db.ciudades_conocidas`): es la que filtra el catálogo, así que una mal
+    escrita no da ningún error visible, solo deja al cliente mirando una
+    tienda vacía.
+    """
+    codigo = str(codigo or "").strip()
+    nombre = str(nombre or "").strip()
+    ciudad = str(ciudad or "").strip()
+
+    if not codigo:
+        return codigo, nombre, ciudad, "El referido necesita un código."
+    if len(codigo) < MIN_LARGO_CODIGO:
+        return codigo, nombre, ciudad, (
+            f"El código es muy corto: necesita al menos {MIN_LARGO_CODIGO} "
+            f"caracteres."
+        )
+    if len(codigo) > MAX_LARGO_CODIGO:
+        return codigo, nombre, ciudad, (
+            f"El código no puede pasar de {MAX_LARGO_CODIGO} caracteres."
+        )
+    if not PATRON_CODIGO.fullmatch(codigo):
+        return codigo, nombre, ciudad, (
+            "El código solo puede llevar letras, números, punto, guion y "
+            "guion bajo. Sin espacios ni tildes: es lo que el cliente teclea "
+            "al iniciar sesión."
+        )
+
+    if not nombre:
+        return codigo, nombre, ciudad, "Falta el nombre de la persona dueña del código."
+    if len(nombre) > MAX_LARGO_EMPLEADO:
+        return codigo, nombre, ciudad, (
+            f"El nombre no puede pasar de {MAX_LARGO_EMPLEADO} caracteres."
+        )
+
+    if not ciudad:
+        return codigo, nombre, ciudad, (
+            "Elige la ciudad del código: es la que decide qué inventario ve "
+            "quien entra con él."
+        )
+    if ciudades and ciudad not in ciudades:
+        return codigo, nombre, ciudad, (
+            f"«{ciudad}» no es una de las ciudades que existen hoy "
+            f"({', '.join(ciudades)}). Si es una ciudad nueva, publícala "
+            f"primero en el catálogo."
+        )
+
+    return codigo, nombre, ciudad, None
+
+
+@router.post("/referidos/guardar", dependencies=[Depends(requiere_admin)])
+async def guardar_referido(request: Request, codigo_original: str = Form(""),
+                           codigo: str = Form(""), nombre: str = Form(""),
+                           ciudad: str = Form("")):
+    """
+    Crea un código o guarda los cambios de uno que ya existe.
+
+    Una sola ruta para las dos cosas: `codigo_original` vacío significa
+    «nuevo». Así el formulario de arriba y el de cada fila son el mismo
+    formulario, con las mismas validaciones, y no hay dos caminos que se
+    puedan ir separando con el tiempo.
+
+    Va por envío normal de formulario (no fetch), como el resto de esta
+    pantalla: cada cambio recarga y se vuelve a leer el directorio.
+    """
+    original = str(codigo_original or "").strip()
+    tecleado = {"codigo": str(codigo or "").strip(),
+                "nombre": str(nombre or "").strip(),
+                "ciudad": str(ciudad or "").strip()}
+
+    def _no(mensaje):
+        # Al fallar un código NUEVO se devuelve lo tecleado, para no hacerle
+        # escribirlo otra vez. Al fallar la edición de una fila no hace falta:
+        # la fila se vuelve a pintar con lo que hay en la base.
+        return _render_temporada(
+            request,
+            referido_error=mensaje,
+            referido_form=None if original else tecleado,
+        )
+
+    try:
+        ciudades = db.ciudades_conocidas()
+    except Exception as e:
+        return _no(_error_bd(e))
+
+    codigo, nombre, ciudad, error = validar_referido(codigo, nombre, ciudad, ciudades)
+    if error:
+        return _no(error)
+
+    usuario = str(request.session.get("user") or "")
+
+    try:
+        if original:
+            resultado = db.actualizar_referido(original, codigo, nombre, ciudad, usuario)
+        else:
+            resultado = db.crear_referido(codigo, nombre, ciudad, usuario)
+    except Exception as e:
+        return _no(_error_bd(e))
+
+    if not resultado.get("ok"):
+        motivo = resultado.get("motivo")
+        if motivo == "duplicado":
+            return _no(
+                f"Ya hay un código «{codigo}» en el directorio. Los códigos no "
+                f"distinguen mayúsculas, así que no puede haber dos que solo "
+                f"se diferencien en eso."
+            )
+        return _no("Ese código ya no está en el directorio. Recarga la pantalla.")
+
+    if not original:
+        return RedirectResponse(url="/admin/temporada?msg=ref_creado#referidos",
+                                status_code=303)
+
+    return RedirectResponse(
+        url=(f"/admin/temporada?msg=ref_guardado"
+             f"&ren={int(resultado.get('recodificados') or 0)}"
+             f"&reub={int(resultado.get('reubicados') or 0)}#referidos"),
+        status_code=303,
+    )
+
+
+@router.post("/referidos/borrar", dependencies=[Depends(requiere_admin)])
+async def borrar_referido(request: Request, codigo: str = Form("")):
+    """
+    Saca un código del directorio.
+
+    Las cuentas que lo tuvieran quedan sin código (tendrán que ingresar uno
+    válido en su próximo inicio de sesión) y las reservas ya hechas se
+    quedan como están. La pantalla lo pregunta diciendo a cuántas cuentas
+    afecta antes de llegar aquí.
+    """
+    elegido = str(codigo or "").strip()
+    if not elegido:
+        return _render_temporada(request, referido_error="No sé qué código quieres borrar.")
+
+    try:
+        resultado = db.borrar_referido(elegido, str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, referido_error=_error_bd(e))
+
+    if not resultado.get("ok"):
+        return _render_temporada(
+            request,
+            referido_error="Ese código ya no está en el directorio. Recarga la pantalla.",
+        )
+
+    return RedirectResponse(
+        url=(f"/admin/temporada?msg=ref_borrado"
+             f"&sin={int(resultado.get('usuarios') or 0)}#referidos"),
+        status_code=303,
+    )

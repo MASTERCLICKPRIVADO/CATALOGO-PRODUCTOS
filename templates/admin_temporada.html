@@ -18,6 +18,11 @@
    Con la tienda cerrada nadie ve el catálogo ni puede reservar. Tú sigues
    entrando aquí.
 </p>
+<p style="font-size: 13px; color: #666; margin-top: 15px;">
+   Al final de la pantalla están los <a href="#referidos"
+   style="color: #8a8f64;">códigos de referido</a>. Esos no se publican:
+   valen desde que los guardas.
+</p>
 {% endblock %}
 
 {% block content %}
@@ -67,6 +72,68 @@
                 font-weight: bold; display: block; }
   .cifra .cuanto { font-size: 19px; font-weight: bold; color: #333; }
   .cifra .cuanto small { font-size: 13px; color: #888; font-weight: normal; }
+
+  /* ── Códigos de referido ──────────────────────────────────────────── */
+  /* Cada fila es un formulario propio: se guarda una y las demás se quedan
+     como estaban. El borrar va en OTRO formulario al lado (no dentro: HTML
+     no permite anidar <form> y el navegador lo deshace). */
+  .ref-barra { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+               margin: 16px 0 10px; }
+  .ref-barra input[type=search] {
+    flex: 1; min-width: 180px; padding: 10px 14px; border: 1px solid #ddd;
+    border-radius: 999px; font-family: inherit; font-size: 14px;
+  }
+  .ref-barra select {
+    padding: 10px 12px; border: 1px solid #ddd; border-radius: 999px;
+    font-family: inherit; font-size: 14px; background: white; color: #555;
+  }
+  .ref-barra .conteo { font-size: 12px; color: #999; }
+
+  /* El tope de filas visibles se aplica en CSS desde el primer pintado, para
+     que no se vean las 43 y se encojan un instante después. En cuanto corre
+     el JavaScript, se quita esta clase y manda él (ver el script del final).
+     Sin JavaScript, el <noscript> de abajo deja la lista entera a la vista. */
+  #lista-ref.tope-5 > .fila-ref-caja:nth-of-type(n+6) { display: none; }
+
+  .fila-ref-caja {
+    border: 1px solid #eee; border-radius: 14px; padding: 12px 14px;
+    margin-bottom: 8px; background: #fafaf7;
+  }
+  .fila-ref { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+              margin: 0; }
+  .fila-ref input, .fila-ref select {
+    padding: 9px 11px; border: 1px solid #ddd; border-radius: 10px;
+    font-family: inherit; font-size: 14px; background: white; min-width: 0;
+  }
+  .fila-ref .in-codigo { width: 150px; font-weight: bold; color: #6e7350; }
+  .fila-ref .in-nombre { flex: 1; min-width: 180px; }
+  .fila-ref .in-ciudad { width: 150px; }
+  .fila-ref .btn-ref {
+    width: auto; padding: 9px 18px; background: #8a8f64; font-size: 14px;
+    margin: 0;
+  }
+  .fila-ref .btn-ref[disabled] { background: #cfcfc4; cursor: default; }
+  .fila-ref-caja.tocada { border-color: #8a8f64; background: #fcfdf8; }
+
+  .ref-extra { display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+               margin-top: 8px; font-size: 12px; color: #999; }
+  .ref-extra details { font-size: 12px; }
+  .ref-extra summary { cursor: pointer; color: #6e7350; }
+  .ref-extra ul { margin: 6px 0 0; padding-left: 18px; color: #777;
+                  line-height: 1.6; word-break: break-all; }
+  .ref-extra .chip {
+    background: #eef0e4; color: #6e7350; border-radius: 999px;
+    padding: 2px 9px; font-weight: bold;
+  }
+  .ref-extra form { margin: 0 0 0 auto; }
+  .ref-vacio { color: #999; font-style: italic; }
+
+  @media (max-width: 700px) {
+    .fila-ref .in-codigo, .fila-ref .in-ciudad,
+    .fila-ref .in-nombre { width: 100%; flex: 1 1 100%; }
+    .fila-ref .btn-ref { width: 100%; }
+    .ref-extra form { margin-left: 0; }
+  }
 </style>
 
 <section class="contenedor" style="padding-top: 40px; padding-bottom: 60px;">
@@ -307,6 +374,189 @@
     </p>
     {% endif %}
 
+    <!-- ── Códigos de referido ────────────────────────────────────────── -->
+    {#
+       Mismo apartado de data, bloque aparte. Lo que se guarda aquí NO pasa
+       por «preparar y publicar»: es el directorio contra el que se valida
+       cada inicio de sesión, así que vale desde el momento en que se guarda.
+       Por eso el aviso amarillo, para que no se confunda con los archivos
+       de arriba.
+    #}
+    <h3 id="referidos" style="color: #8a8f64; margin: 45px 0 6px;">Códigos de referido</h3>
+    <p style="font-size: 13px; color: #777; margin: 0 0 12px;">
+      El código que el cliente escribe al iniciar sesión o registrarse. La
+      <strong>ciudad</strong> del código es la que decide qué inventario ve
+      quien entra con él.
+    </p>
+
+    <div class="caja-aviso caja-ojo" style="margin-top: 0;">
+      Aquí no hay «preparar y publicar»: <strong>lo que guardes vale desde
+      ya</strong>. Las reservas que ya se hicieron conservan el código con el
+      que se hicieron.
+    </div>
+
+    {% if referido_error %}
+    <div class="caja-aviso caja-mal" id="error-referido">{{ referido_error }}</div>
+    {% endif %}
+
+    <!-- Agregar -->
+    <div class="pieza" style="margin-top: 16px;">
+      <h4>Agregar un código</h4>
+      <p class="nota">Desde que lo guardes sirve para iniciar sesión.</p>
+      <form method="post" action="/admin/referidos/guardar" class="fila-ref form-ref">
+        <input type="text" name="codigo" class="in-codigo" required
+               maxlength="{{ max_largo_codigo }}" placeholder="Código"
+               value="{{ referido_form.codigo or '' }}"
+               aria-label="Código" autocomplete="off">
+        <input type="text" name="nombre" class="in-nombre" required
+               maxlength="{{ max_largo_empleado }}" placeholder="Nombre de la persona"
+               value="{{ referido_form.nombre or '' }}"
+               aria-label="Nombre" autocomplete="off">
+        <select name="ciudad" class="in-ciudad" required aria-label="Ciudad">
+          <option value="">Ciudad...</option>
+          {% for c in ciudades %}
+          <option value="{{ c }}" {% if c == referido_form.ciudad %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-ref">Agregar</button>
+      </form>
+    </div>
+
+    <!-- Los que ya existen -->
+    <div class="ref-barra">
+      <input type="search" id="buscar-ref" placeholder="Buscar por código o nombre"
+             aria-label="Buscar un código de referido" autocomplete="off">
+      <select id="ciudad-ref" aria-label="Filtrar por ciudad">
+        <option value="">Todas las ciudades</option>
+        {% for c in ciudades %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <select id="tope-ref" aria-label="Cuántos códigos mostrar">
+        <option value="5" selected>Mostrar 5</option>
+        <option value="10">Mostrar 10</option>
+        <option value="25">Mostrar 25</option>
+        <option value="50">Mostrar 50</option>
+        <option value="0">Mostrar todos</option>
+      </select>
+      <span class="conteo" id="conteo-ref">
+        {{ referidos|length }} de {{ referidos_total }}
+      </span>
+    </div>
+    {# Sin JavaScript no hay quien aplique los filtros, así que se quita el
+       tope y se ve la lista completa: vale más entera que recortada a cinco
+       sin poder cambiarlo. #}
+    <noscript>
+      <style>#lista-ref.tope-5 > .fila-ref-caja { display: block; }</style>
+    </noscript>
+
+    {% if referidos_total > referidos_tope %}
+    <div class="caja-aviso caja-ojo">
+      El directorio tiene {{ referidos_total }} códigos y esta pantalla
+      enseña los primeros {{ referidos_tope }}.
+    </div>
+    {% endif %}
+
+    {% if not referidos %}
+    <p class="ref-vacio">
+      {% if referido_error %}
+        No se pudo leer el directorio de códigos.
+      {% else %}
+        El directorio está vacío. Agrega el primer código arriba.
+      {% endif %}
+    </p>
+    {% endif %}
+
+    <div id="lista-ref" class="tope-5">
+    {% for r in referidos %}
+    <div class="fila-ref-caja"
+         data-ciudad="{{ r.ciudad|trim }}"
+         data-buscar="{{ (r.codigo ~ ' ' ~ r.nombre ~ ' ' ~ r.ciudad)|lower }}">
+      <form method="post" action="/admin/referidos/guardar" class="fila-ref form-ref">
+        {# El código viejo viaja aparte: es con el que se busca la fila, y
+           también lo que se reescribe en las cuentas si cambia. #}
+        <input type="hidden" name="codigo_original" value="{{ r.codigo }}">
+        <input type="text" name="codigo" class="in-codigo" required
+               maxlength="{{ max_largo_codigo }}" value="{{ r.codigo }}"
+               aria-label="Código" autocomplete="off">
+        <input type="text" name="nombre" class="in-nombre" required
+               maxlength="{{ max_largo_empleado }}" value="{{ r.nombre|trim }}"
+               aria-label="Nombre" autocomplete="off">
+        <select name="ciudad" class="in-ciudad" required aria-label="Ciudad">
+          {# Si la ciudad de la fila no estuviera entre las conocidas, se
+             enseña igual y seleccionada: guardar no debe cambiarla a otra
+             por su cuenta. #}
+          {% if r.ciudad|trim not in ciudades %}
+          <option value="{{ r.ciudad|trim }}" selected>{{ r.ciudad|trim }}</option>
+          {% endif %}
+          {% for c in ciudades %}
+          <option value="{{ c }}" {% if c == r.ciudad|trim %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-ref">Guardar</button>
+      </form>
+
+      <div class="ref-extra">
+        {% if r.usuarios %}
+        <details>
+          <summary>
+            {{ r.usuarios }} cuenta{% if r.usuarios != 1 %}s{% endif %} con este código
+          </summary>
+          <ul>
+            {% for correo in r.correos %}<li>{{ correo }}</li>{% endfor %}
+          </ul>
+          {% if r.usuarios > r.correos|length %}
+          <p style="margin: 6px 0 0; color: #999;">
+            y {{ r.usuarios - r.correos|length }} más (se enseñan
+            {{ max_usuarios_por_codigo }} como ejemplo).
+          </p>
+          {% endif %}
+        </details>
+        {% else %}
+        <span>Ninguna cuenta lo tiene asignado</span>
+        {% endif %}
+
+        {% if r.reservas %}
+        <span class="chip">{{ r.reservas }} reserva{% if r.reservas != 1 %}s{% endif %}</span>
+        {% endif %}
+
+        <form method="post" action="/admin/referidos/borrar" class="form-borrar-ref">
+          <input type="hidden" name="codigo" value="{{ r.codigo }}">
+          <button type="submit" class="enlace-descartar"
+                  data-codigo="{{ r.codigo }}" data-usuarios="{{ r.usuarios }}">
+            Borrar
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+    </div>
+
+    <p class="ref-vacio" id="ref-sin-coincidencias" hidden>
+      Ningún código coincide con lo que buscas.
+    </p>
+
+    {% if referidos_huerfanos %}
+    <details style="margin-top: 18px;">
+      <summary style="cursor: pointer; color: #8d6e00; font-size: 13px;">
+        Hay códigos que algunas cuentas traen guardados y que ya no están en
+        el directorio
+      </summary>
+      <p style="font-size: 13px; color: #777; margin: 8px 0;">
+        Son códigos que se usaron antes y luego se quitaron de la tabla. No
+        rompen nada: quien tenga uno de estos tendrá que ingresar un código
+        válido la próxima vez que entre. Están aquí por si alguno debería
+        volver al directorio.
+      </p>
+      <ul style="font-size: 13px; color: #777; line-height: 1.7;">
+        {% for h in referidos_huerfanos %}
+        <li><strong>{{ h.codigo }}</strong> — {{ h.usuarios }}
+            cuenta{% if h.usuarios != 1 %}s{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
   </div>
 </section>
 
@@ -377,6 +627,157 @@
     parrafo.addEventListener('submit', function () {
       alNavegar(parrafo.querySelector('button[type=submit]'), 'Guardando...');
     });
+  }
+})();
+</script>
+
+<script>
+/*
+  Códigos de referido. Todo esto es comodidad encima de formularios que ya
+  funcionan solos: sin JavaScript se busca con Ctrl+F, el botón Guardar
+  está activo desde el principio y borrar no pregunta. Nada de esto decide
+  nada: lo que vale son las validaciones del servidor (app/admin.py).
+*/
+(function () {
+  var cajas = Array.prototype.slice.call(
+    document.querySelectorAll('.fila-ref-caja'));
+
+  // ── Filtros: texto, ciudad y cuántos se enseñan ───────────────────────
+  // Los tres salen de la misma función. El tope se aplica DESPUÉS de
+  // filtrar, para que «5» signifique cinco de los que coinciden y no cinco
+  // de la lista entera (si no, buscar algo que está en la fila 20 no
+  // enseñaría nada).
+  var lista = document.getElementById('lista-ref');
+  var buscador = document.getElementById('buscar-ref');
+  var filtroCiudad = document.getElementById('ciudad-ref');
+  var filtroTope = document.getElementById('tope-ref');
+  var conteo = document.getElementById('conteo-ref');
+  var sinCoincidencias = document.getElementById('ref-sin-coincidencias');
+
+  function aplicarFiltros() {
+    var q = buscador ? buscador.value.trim().toLowerCase() : '';
+    var ciudad = filtroCiudad ? filtroCiudad.value : '';
+    // 0 = todos.
+    var tope = filtroTope ? parseInt(filtroTope.value, 10) : 0;
+
+    var coinciden = 0;
+    var mostrados = 0;
+
+    cajas.forEach(function (caja) {
+      var coincide =
+        (!q || (caja.dataset.buscar || '').indexOf(q) !== -1) &&
+        (!ciudad || caja.dataset.ciudad === ciudad);
+
+      if (!coincide) { caja.style.display = 'none'; return; }
+
+      coinciden++;
+      // Una fila con cambios sin guardar no se esconde por el tope: sería
+      // tirarle al admin lo que acaba de escribir sin avisar.
+      var protegida = caja.classList.contains('tocada');
+      var cabe = !tope || mostrados < tope || protegida;
+      caja.style.display = cabe ? '' : 'none';
+      if (cabe) mostrados++;
+    });
+
+    if (conteo) {
+      if (!coinciden) {
+        conteo.textContent = 'ninguno coincide';
+      } else if (coinciden === cajas.length) {
+        conteo.textContent = mostrados + ' de ' + cajas.length;
+      } else {
+        conteo.textContent = mostrados + ' de ' + coinciden +
+                             ' que coinciden (' + cajas.length + ' en total)';
+      }
+    }
+    if (sinCoincidencias) sinCoincidencias.hidden = coinciden > 0;
+  }
+
+  if (cajas.length) {
+    // El tope inicial lo venía aplicando el CSS para que no hubiera
+    // parpadeo; a partir de aquí manda esta función, que hace lo mismo.
+    if (lista) lista.classList.remove('tope-5');
+    [buscador, filtroCiudad, filtroTope].forEach(function (control) {
+      if (!control) return;
+      control.addEventListener('input', aplicarFiltros);
+      control.addEventListener('change', aplicarFiltros);
+    });
+    aplicarFiltros();
+  }
+
+  // ── El botón Guardar se enciende cuando algo cambió ───────────────────
+  // Evita escrituras que no cambian nada y, sobre todo, deja ver de un
+  // golpe qué filas están tocadas sin guardar.
+  cajas.forEach(function (caja) {
+    var form = caja.querySelector('form.form-ref');
+    if (!form) return;
+    var boton = form.querySelector('button[type=submit]');
+    var campos = Array.prototype.slice.call(
+      form.querySelectorAll('input[name=codigo], input[name=nombre], select[name=ciudad]'));
+    var inicial = campos.map(function (c) { return c.value; });
+
+    function revisar() {
+      var cambio = campos.some(function (c, i) { return c.value !== inicial[i]; });
+      caja.classList.toggle('tocada', cambio);
+      if (boton) boton.disabled = !cambio;
+    }
+
+    revisar();   // arranca apagado: la fila está igual que en la base
+    campos.forEach(function (c) {
+      c.addEventListener('input', revisar);
+      c.addEventListener('change', revisar);
+    });
+
+    form.addEventListener('submit', function () {
+      // La pantalla se recarga entera, así que la ruedita no se quita.
+      if (boton) {
+        setTimeout(function () { MC.cargando(boton, 'Guardando...'); }, 0);
+      }
+    });
+  });
+
+  // ── Borrar: se dice a cuántas cuentas afecta ANTES ───────────────────
+  Array.prototype.forEach.call(
+    document.querySelectorAll('.form-borrar-ref'), function (form) {
+      form.addEventListener('submit', function (e) {
+        var boton = form.querySelector('button');
+        var codigo = boton ? boton.dataset.codigo : '';
+        var usuarios = boton ? parseInt(boton.dataset.usuarios || '0', 10) : 0;
+
+        var aviso = '¿Borrar el código "' + codigo + '"?\n\n' +
+                    'Deja de servir para iniciar sesión.';
+        if (usuarios > 0) {
+          aviso += '\n\n' + usuarios + (usuarios === 1 ? ' cuenta que lo tiene'
+                   : ' cuentas que lo tienen') + ' asignado ' +
+                   (usuarios === 1 ? 'quedará' : 'quedarán') +
+                   ' sin código y ' +
+                   (usuarios === 1 ? 'tendrá' : 'tendrán') +
+                   ' que ingresar uno válido la próxima vez que ' +
+                   (usuarios === 1 ? 'entre' : 'entren') + '.';
+        }
+        aviso += '\n\nLas reservas ya hechas no se tocan.';
+
+        if (!confirm(aviso)) { e.preventDefault(); return; }
+        if (boton) {
+          boton.style.pointerEvents = 'none';
+          setTimeout(function () { MC.cargando(boton, ''); }, 0);
+        }
+      });
+    });
+
+  // El formulario de agregar también lleva ruedita.
+  var nuevo = document.querySelector('.pieza form.form-ref');
+  if (nuevo && !nuevo.closest('.fila-ref-caja')) {
+    nuevo.addEventListener('submit', function () {
+      var boton = nuevo.querySelector('button[type=submit]');
+      setTimeout(function () { MC.cargando(boton, 'Agregando...'); }, 0);
+    });
+  }
+
+  // Si el servidor devolvió un error de referidos, la pantalla vuelve
+  // arriba y el aviso queda al final: lo traemos a la vista.
+  var error = document.getElementById('error-referido');
+  if (error && error.scrollIntoView) {
+    error.scrollIntoView({ block: 'center' });
   }
 })();
 </script>
