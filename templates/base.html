@@ -92,6 +92,60 @@
     })();
     </script>
 
+    <!--
+        Ruedita al cambiar de pestaña del panel.
+
+        Las pestañas (Descuentos / Temporada) son enlaces normales, y la
+        página que abren tarda un momento en llegar porque hace varias
+        consultas antes de pintarse. Sin esto no pasa nada visible al
+        hacer clic y parece que no entró.
+
+        Va aquí y no en cada plantilla porque es el mismo comportamiento
+        en todas, y por delegación en el documento porque este script
+        corre en el <head>, cuando todavía no existen los enlaces.
+    -->
+    <script>
+    (function () {
+        var deshacer = null;
+
+        document.addEventListener('click', function (e) {
+            var pestana = e.target && e.target.closest
+                ? e.target.closest('.pestana')
+                : null;
+            if (!pestana) return;
+
+            // La pestaña en la que ya estás no lleva a ninguna parte.
+            if (pestana.classList.contains('activa')) return;
+
+            // Ctrl+clic, clic del medio y demás abren otra pestaña DEL
+            // NAVEGADOR: esta página se queda donde está, así que no hay
+            // nada que esperar.
+            if (e.defaultPrevented || e.button !== 0 ||
+                e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            if (pestana.target && pestana.target !== '_self') return;
+
+            // No se quita: sigue girando hasta que aparece la página
+            // nueva. Y se bloquea el enlace para que un segundo clic no
+            // pida lo mismo otra vez.
+            var restaurar = MC.cargando(pestana, pestana.textContent.trim());
+            pestana.style.pointerEvents = 'none';
+            deshacer = function () {
+                pestana.style.pointerEvents = '';
+                restaurar();
+            };
+        });
+
+        // Volver atrás puede devolver esta página tal como estaba, con la
+        // ruedita girando por una navegación que ya terminó hace rato.
+        window.addEventListener('pageshow', function (e) {
+            if (e.persisted && deshacer) {
+                deshacer();
+                deshacer = null;
+            }
+        });
+    })();
+    </script>
+
     <link rel="stylesheet" href="{{ url_for('static', path='estilos2.css') }}">
 </head>
 <body>
