@@ -422,6 +422,175 @@
       </form>
     </div>
 
+    <!-- Reemplazar el directorio entero con un CSV -->
+    {#
+       Igual que el catálogo: subir no es reemplazar. El archivo se lee, se
+       valida y se enseña qué cambiaría; nada se escribe hasta confirmar.
+    #}
+    <div class="pieza {% if referido_csv %}lista{% endif %}">
+      <h4>Reemplazar todos con un archivo</h4>
+      <p class="nota">
+        Para no tener que agregarlos y quitarlos de uno en uno. <strong>El
+        archivo manda</strong>: los códigos que no estén en él se dan de baja.
+      </p>
+      <p class="nota">
+        Tres columnas: <code>codigo</code>, <code>nombre</code> y
+        <code>ciudad</code>. Lo más fácil es
+        <a href="/admin/referidos/csv" style="color: #8a8f64;">descargar el
+        directorio actual</a>, editarlo en Excel y volver a subirlo. Máximo
+        {{ max_kb_directorio }} KB.
+      </p>
+      <form method="post" action="/admin/referidos/csv" enctype="multipart/form-data"
+            class="form-subida-ref" style="margin: 0;">
+        <input type="file" name="archivo" accept=".csv,text/csv" required>
+        <button type="submit" class="btn"
+                style="width: auto; padding: 10px 22px; margin-top: 12px; background: #8a8f64;">
+          Revisar el archivo
+        </button>
+      </form>
+      <p class="nota" style="margin: 10px 0 0;">
+        Subir no reemplaza nada: primero verás qué cambiaría.
+      </p>
+    </div>
+
+    {% if referido_csv %}
+    {% set comparacion = referido_csv.comparacion %}
+    <div id="revision-csv" style="border: 2px solid #8a8f64; border-radius: 18px;
+                                  padding: 20px 22px; background: #fcfdf8; margin-bottom: 14px;">
+      <p class="rotulo" style="color: #6e7350;">● Antes de reemplazar</p>
+      <p style="margin: 0 0 6px; color: #555;">
+        Esto es lo que haría <strong>{{ referido_csv.archivo }}</strong>.
+        Todavía no se ha cambiado nada.
+      </p>
+
+      {% for aviso in referido_csv.avisos %}
+      <div class="caja-aviso caja-ojo">{{ aviso }}</div>
+      {% endfor %}
+
+      <div class="cifras">
+        <div class="cifra">
+          <span class="que">Códigos</span>
+          <span class="cuanto">{{ comparacion.total_archivo }}
+            <small>antes {{ comparacion.total_actual }}</small></span>
+        </div>
+        <div class="cifra">
+          <span class="que">Entran</span>
+          <span class="cuanto" style="color: #2e7d32;">+{{ comparacion.altas|length }}</span>
+        </div>
+        <div class="cifra">
+          <span class="que">Salen</span>
+          <span class="cuanto" style="color: #c62828;">−{{ comparacion.bajas|length }}</span>
+        </div>
+        <div class="cifra">
+          <span class="que">Cambian de ciudad</span>
+          <span class="cuanto">{{ comparacion.cambios_ciudad|length }}</span>
+        </div>
+      </div>
+
+      <ul style="margin: 16px 0 0; padding-left: 20px; font-size: 14px; color: #555;">
+        {% if comparacion.cuentas_sin_codigo %}
+        <li><strong>{{ comparacion.cuentas_sin_codigo }}
+            cuenta{% if comparacion.cuentas_sin_codigo != 1 %}s{% endif %}</strong>
+            quedarían sin código, por los que se dan de baja: tendrán que
+            ingresar uno válido la próxima vez que entren.</li>
+        {% endif %}
+        {% if comparacion.cuentas_reubicadas %}
+        <li>{{ comparacion.cuentas_reubicadas }}
+            cuenta{% if comparacion.cuentas_reubicadas != 1 %}s{% endif %}
+            cambiarían de ciudad, así que verán otro catálogo en su próximo
+            inicio de sesión.</li>
+        {% endif %}
+        {% if comparacion.cambios_nombre == 1 %}
+        <li>1 cambia de nombre o de forma de escribirse.</li>
+        {% elif comparacion.cambios_nombre %}
+        <li>{{ comparacion.cambios_nombre }} cambian de nombre o de forma de
+            escribirse.</li>
+        {% endif %}
+        {% if comparacion.iguales == 1 %}
+        <li>1 queda exactamente igual.</li>
+        {% else %}
+        <li>{{ comparacion.iguales }} quedan exactamente igual.</li>
+        {% endif %}
+        <li>Las reservas ya hechas no se tocan: conservan el código con el que
+            se hicieron.</li>
+      </ul>
+
+      {% if comparacion.bajas %}
+      <details style="margin-top: 12px;">
+        <summary style="cursor: pointer; color: #c62828; font-size: 13px;">
+          {% if comparacion.bajas|length == 1 %}Ver el que sale
+          {% else %}Ver los {{ comparacion.bajas|length }} que salen{% endif %}
+        </summary>
+        <ul style="font-size: 13px; color: #777; line-height: 1.7;">
+          {% for b in comparacion.bajas %}
+          <li><strong>{{ b.codigo }}</strong> — {{ b.nombre|trim }} ({{ b.ciudad }})
+            {% if b.usuarios %}
+            · <span style="color: #c62828;">{{ b.usuarios }}
+              cuenta{% if b.usuarios != 1 %}s{% endif %} se queda{% if b.usuarios != 1 %}n{% endif %} sin código</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      {% if comparacion.altas %}
+      <details style="margin-top: 8px;">
+        <summary style="cursor: pointer; color: #2e7d32; font-size: 13px;">
+          {% if comparacion.altas|length == 1 %}Ver el que entra
+          {% else %}Ver los {{ comparacion.altas|length }} que entran{% endif %}
+        </summary>
+        <ul style="font-size: 13px; color: #777; line-height: 1.7;">
+          {% for a in comparacion.altas %}
+          <li><strong>{{ a.codigo }}</strong> — {{ a.nombre }} ({{ a.ciudad }})</li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      {% if comparacion.cambios_ciudad %}
+      <details style="margin-top: 8px;">
+        <summary style="cursor: pointer; color: #8d6e00; font-size: 13px;">
+          {% if comparacion.cambios_ciudad|length == 1 %}Ver el que cambia de ciudad
+          {% else %}Ver los {{ comparacion.cambios_ciudad|length }} que cambian de ciudad
+          {% endif %}
+        </summary>
+        <ul style="font-size: 13px; color: #777; line-height: 1.7;">
+          {% for c in comparacion.cambios_ciudad %}
+          <li><strong>{{ c.codigo }}</strong>: {{ c.antes }} → {{ c.despues }}
+            {% if c.usuarios %}· {{ c.usuarios }}
+            cuenta{% if c.usuarios != 1 %}s{% endif %}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      {% if comparacion.hay_cambios %}
+      <form method="post" action="/admin/referidos/csv/confirmar" id="form-csv-referidos"
+            style="margin: 18px 0 0;"
+            data-bajas="{{ comparacion.bajas|length }}"
+            data-cuentas="{{ comparacion.cuentas_sin_codigo }}">
+        {# En un <textarea> y no en un input oculto: el CSV lleva saltos de
+           línea y un atributo value los maltrata. Sin espacios ni saltos
+           entre la etiqueta y el contenido, que el navegador se come el
+           primero. #}
+        <textarea name="contenido" hidden>{{ referido_csv.contenido }}</textarea>
+        <button type="submit" class="btn"
+                style="width: auto; padding: 13px 30px; background: #8a8f64; font-size: 15px;">
+          Reemplazar el directorio
+        </button>
+        <a href="/admin/temporada#referidos"
+           style="margin-left: 14px; color: #888; font-size: 13px;">Cancelar</a>
+      </form>
+      {% else %}
+      <p style="margin: 16px 0 0; color: #777; font-size: 14px;">
+        El archivo dice exactamente lo que ya hay: no hay nada que reemplazar.
+      </p>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Los que ya existen -->
     <div class="ref-barra">
       <input type="search" id="buscar-ref" placeholder="Buscar por código o nombre"
@@ -773,11 +942,50 @@
     });
   }
 
-  // Si el servidor devolvió un error de referidos, la pantalla vuelve
-  // arriba y el aviso queda al final: lo traemos a la vista.
-  var error = document.getElementById('error-referido');
-  if (error && error.scrollIntoView) {
-    error.scrollIntoView({ block: 'center' });
+  // ── Reemplazar el directorio con un CSV ──────────────────────────────
+  var subidaRef = document.querySelector('.form-subida-ref');
+  if (subidaRef) {
+    subidaRef.addEventListener('submit', function () {
+      var boton = subidaRef.querySelector('button[type=submit]');
+      boton.style.pointerEvents = 'none';
+      setTimeout(function () { MC.cargando(boton, 'Revisando...'); }, 0);
+    });
+  }
+
+  // Confirmar el reemplazo: el aviso dice lo que de verdad duele, que es
+  // cuántos códigos desaparecen y cuántas cuentas se quedan sin el suyo.
+  var reemplazo = document.getElementById('form-csv-referidos');
+  if (reemplazo) {
+    reemplazo.addEventListener('submit', function (e) {
+      var bajas = parseInt(reemplazo.dataset.bajas || '0', 10);
+      var cuentas = parseInt(reemplazo.dataset.cuentas || '0', 10);
+
+      var aviso = '¿Reemplazar el directorio con este archivo?\n\n' +
+                  'El directorio queda exactamente como dice el archivo.';
+      if (bajas > 0) {
+        aviso += '\n\n' + bajas + (bajas === 1 ? ' código deja' : ' códigos dejan') +
+                 ' de servir para iniciar sesión.';
+      }
+      if (cuentas > 0) {
+        aviso += '\n' + cuentas + (cuentas === 1 ? ' cuenta queda' : ' cuentas quedan') +
+                 ' sin código asignado.';
+      }
+      aviso += '\n\nNo se puede deshacer.';
+
+      if (!confirm(aviso)) { e.preventDefault(); return; }
+      var boton = reemplazo.querySelector('button[type=submit]');
+      boton.style.pointerEvents = 'none';
+      setTimeout(function () { MC.cargando(boton, 'Reemplazando...'); }, 0);
+    });
+  }
+
+  // Si el servidor devolvió un error de referidos, o dejó un archivo
+  // esperando confirmación, la pantalla vuelve arriba y eso queda al
+  // final: lo traemos a la vista.
+  var aviso = document.getElementById('error-referido') ||
+              document.getElementById('revision-csv');
+  if (aviso && aviso.scrollIntoView) {
+    aviso.scrollIntoView({ block: 'center' });
   }
 })();
 </script>

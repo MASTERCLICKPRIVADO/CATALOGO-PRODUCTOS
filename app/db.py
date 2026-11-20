@@ -1850,3 +1850,241 @@ def borrar_referido(codigo: str, usuario: str) -> dict:
             })
 
     return {"ok": True, "usuarios": sueltos, "fila": dict(fila)}
+
+
+# ── Reemplazar el directorio entero con un archivo ────────────────────────
+#
+# Lo mismo que se hace con el catálogo, para los códigos: en vez de agregar
+# y quitar de uno en uno, se sube un CSV y manda el archivo.
+#
+# POR QUÉ NO ES UN TRUNCATE + INSERT
+# ----------------------------------
+# Vaciar la tabla y volver a llenarla sería mucho más corto, pero rompería
+# la relación con las cuentas: `usuarios.codigo_referido` quedaría apuntando
+# a filas que se borraron y se volvieron a crear, y la ciudad de cada cuenta
+# dejaría de decir lo mismo que su código. Así que se compara con lo que hay
+# y se aplica la diferencia:
+#
+#   - el código sigue      -> se le actualiza nombre y ciudad, y la ciudad se
+#                             arrastra a las cuentas que lo tienen
+#   - el código es nuevo   -> se inserta
+#   - el código ya no está -> se borra y sus cuentas quedan sin código
+#
+# El cruce se hace por el código en minúsculas y sin espacios, igual que el
+# login: así cambiar «jperez» por «JPEREZ» en el archivo es un cambio de
+# escritura de la misma persona, no una baja y un alta.
+#
+# Las reservas ya hechas NO se tocan, aquí tampoco. Son el histórico.
+
+
+def _indice_por_codigo(filas) -> dict:
+    """{codigo en minúsculas y sin espacios: fila}, para cruzar las dos listas."""
+    return {str(f["codigo"]).strip().lower(): f for f in filas}
+
+
+def comparar_directorio(filas) -> dict:
+    """
+    Qué cambiaría si se reemplazara el directorio por `filas`. NO escribe.
+
+    Es la pantalla de «esto es lo que va a pasar» antes de confirmar: la
+    última oportunidad de ver que el archivo no era el que tocaba.
+
+    Devuelve un dict con los totales, las listas de altas, bajas y cambios
+    de ciudad (con cuántas cuentas arrastra cada una) y cuántas cuentas
+    quedarían sin código.
+    """
+    nuevas = _indice_por_codigo(filas)
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT codigo, nombre, ciudad FROM directorio_empleados")
+            actuales = {str(r["codigo"]).strip().lower(): dict(r)
+                        for r in cur.fetchall()}
+
+            cur.execute(
+                """SELECT LOWER(TRIM(codigo_referido)) AS k, count(*) AS n
+                     FROM usuarios
+                    WHERE COALESCE(TRIM(codigo_referido), '') <> ''
+                    GROUP BY 1"""
+            )
+            cuentas = {r["k"]: int(r["n"]) for r in cur.fetchall()}
+
+    altas, bajas, cambios_ciudad = [], [], []
+    cambios_nombre = 0
+    iguales = 0
+
+    for clave, nueva in nuevas.items():
+        vieja = actuales.get(clave)
+        if not vieja:
+            altas.append({"codigo": nueva["codigo"], "nombre": nueva["nombre"],
+                          "ciudad": nueva["ciudad"]})
+            continue
+
+        ciudad_vieja = str(vieja["ciudad"] or "").strip()
+        nombre_viejo = str(vieja["nombre"] or "").strip()
+        toco_algo = False
+
+        if ciudad_vieja != nueva["ciudad"]:
+            cambios_ciudad.append({
+                "codigo": nueva["codigo"], "antes": ciudad_vieja,
+                "despues": nueva["ciudad"], "usuarios": cuentas.get(clave, 0),
+            })
+            toco_algo = True
+        if nombre_viejo != nueva["nombre"] or str(vieja["codigo"]) != nueva["codigo"]:
+            cambios_nombre += 1
+            toco_algo = True
+        if not toco_algo:
+            iguales += 1
+
+    for clave, vieja in actuales.items():
+        if clave not in nuevas:
+            bajas.append({"codigo": vieja["codigo"], "nombre": vieja["nombre"],
+                          "ciudad": vieja["ciudad"],
+                          "usuarios": cuentas.get(clave, 0)})
+
+    altas.sort(key=lambda f: f["codigo"].lower())
+    bajas.sort(key=lambda f: (-f["usuarios"], f["codigo"].lower()))
+    cambios_ciudad.sort(key=lambda f: (-f["usuarios"], f["codigo"].lower()))
+
+    return {
+        "total_actual": len(actuales),
+        "total_archivo": len(nuevas),
+        "altas": altas,
+        "bajas": bajas,
+        "cambios_ciudad": cambios_ciudad,
+        "cambios_nombre": cambios_nombre,
+        "iguales": iguales,
+        "cuentas_sin_codigo": sum(b["usuarios"] for b in bajas),
+        "cuentas_reubicadas": sum(c["usuarios"] for c in cambios_ciudad),
+        "hay_cambios": bool(altas or bajas or cambios_ciudad or cambios_nombre),
+    }
+
+
+def reemplazar_directorio(filas, usuario: str) -> dict:
+    """
+    Deja el directorio exactamente como dice `filas`, todo en una
+    transacción: o entra el archivo entero o no entra nada.
+
+    `filas` son dicts {codigo, nombre, ciudad} ya validados por el panel
+    (app/admin.py `validar_directorio`). Aquí se da por hecho que los
+    códigos no se repiten entre sí y que las ciudades existen.
+
+    Devuelve el resumen de lo que hizo, que es lo que se le enseña al admin
+    y lo que queda en la auditoría.
+    """
+    nuevas = _indice_por_codigo(filas)
+    hecho = {"altas": 0, "bajas": 0, "actualizados": 0,
+             "cuentas_recodificadas": 0, "cuentas_reubicadas": 0,
+             "cuentas_sin_codigo": 0}
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT codigo, nombre, ciudad FROM directorio_empleados FOR UPDATE"
+            )
+            actuales = {str(r["codigo"]).strip().lower(): dict(r)
+                        for r in cur.fetchall()}
+
+            # ── Los que siguen y los que llegan ───────────────────────
+            for clave, nueva in nuevas.items():
+                vieja = actuales.get(clave)
+
+                if not vieja:
+                    cur.execute(
+                        """INSERT INTO directorio_empleados (codigo, nombre, ciudad)
+                           VALUES (%s, %s, %s)""",
+                        (nueva["codigo"], nueva["nombre"], nueva["ciudad"]),
+                    )
+                    hecho["altas"] += 1
+                    continue
+
+                cambia_escritura = str(vieja["codigo"]) != nueva["codigo"]
+                cambia_ciudad = str(vieja["ciudad"] or "").strip() != nueva["ciudad"]
+                cambia_nombre = str(vieja["nombre"] or "").strip() != nueva["nombre"]
+
+                if not (cambia_escritura or cambia_ciudad or cambia_nombre):
+                    continue
+
+                cur.execute(
+                    """UPDATE directorio_empleados
+                          SET codigo = %s, nombre = %s, ciudad = %s
+                        WHERE codigo = %s""",
+                    (nueva["codigo"], nueva["nombre"], nueva["ciudad"],
+                     vieja["codigo"]),
+                )
+                hecho["actualizados"] += 1
+
+                # Solo cambia cómo se escribe (el cruce es en minúsculas),
+                # pero las cuentas tienen que decir lo mismo que el directorio.
+                if cambia_escritura:
+                    cur.execute(
+                        """UPDATE usuarios
+                              SET codigo_referido = %s
+                            WHERE LOWER(TRIM(codigo_referido)) = %s""",
+                        (nueva["codigo"], clave),
+                    )
+                    hecho["cuentas_recodificadas"] += cur.rowcount or 0
+
+                if cambia_ciudad:
+                    cur.execute(
+                        """UPDATE usuarios
+                              SET ciudad = %s
+                            WHERE LOWER(TRIM(codigo_referido)) = %s
+                              AND COALESCE(TRIM(ciudad), '') <> %s""",
+                        (nueva["ciudad"], clave, nueva["ciudad"]),
+                    )
+                    hecho["cuentas_reubicadas"] += cur.rowcount or 0
+
+            # ── Los que ya no están en el archivo ─────────────────────
+            sobran = [c for c in actuales if c not in nuevas]
+            for clave in sobran:
+                cur.execute(
+                    """UPDATE usuarios
+                          SET codigo_referido = NULL
+                        WHERE LOWER(TRIM(codigo_referido)) = %s""",
+                    (clave,),
+                )
+                hecho["cuentas_sin_codigo"] += cur.rowcount or 0
+                cur.execute(
+                    "DELETE FROM directorio_empleados WHERE codigo = %s",
+                    (actuales[clave]["codigo"],),
+                )
+                hecho["bajas"] += 1
+
+            _auditar(cur, usuario, "reemplazar_directorio", {
+                "total_antes": len(actuales),
+                "total_despues": len(nuevas),
+                **hecho,
+                # Los códigos que se fueron, por si hay que devolver alguno:
+                # es lo único que no se puede reconstruir mirando la tabla.
+                "codigos_borrados": [dict(actuales[c]) for c in sobran][:200],
+            })
+
+    return hecho
+
+
+def exportar_directorio_csv() -> str:
+    """
+    El directorio en CSV, listo para abrir en Excel, editar y volver a subir.
+
+    Mismas tres columnas que se esperan al subir, así que la ida y la vuelta
+    encajan sin tocar nada.
+    """
+    salida = io.StringIO()
+    escritor = csv.writer(salida, lineterminator="\r\n")
+    escritor.writerow(["codigo", "nombre", "ciudad"])
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT codigo, nombre, ciudad FROM directorio_empleados
+                    ORDER BY ciudad, nombre, codigo"""
+            )
+            for r in cur.fetchall():
+                escritor.writerow([
+                    str(r["codigo"] or "").strip(),
+                    str(r["nombre"] or "").strip(),
+                    str(r["ciudad"] or "").strip(),
+                ])
+
+    return salida.getvalue()

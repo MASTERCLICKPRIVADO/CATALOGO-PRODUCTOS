@@ -42,10 +42,13 @@ SEGURIDAD — cómo se autoriza esto
    nuevo. Esto toca el precio que ve el cliente: tiene que quedar rastro.
 """
 
+import csv
+import io
 import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (HTMLResponse, JSONResponse, RedirectResponse,
+                               Response)
 
 from app import db
 from app import home
@@ -635,6 +638,7 @@ MENSAJES_TEMPORADA = {
     "ref_guardado": "Código de referido guardado.",
     "ref_borrado": ("Código de referido eliminado. Ya no sirve para iniciar "
                     "sesión."),
+    "ref_csv": "Directorio reemplazado con el archivo:",
     "catalogo": "Catálogo cargado. Revísalo abajo y publícalo cuando quieras.",
     "excluidos": "Excluidos cargados. Revísalos abajo y publícalos cuando quieras.",
     "parrafo": "Párrafo guardado. Se publicará con la temporada.",
@@ -652,7 +656,8 @@ TOPE_LECTURA = temporada_mod.MAX_BYTES + 1
 
 
 def _render_temporada(request: Request, *, error=None, msg=None, avisos=None,
-                      referido_error=None, referido_form=None):
+                      referido_error=None, referido_form=None,
+                      referido_csv=None):
     templates = request.app.state.templates
 
     estado = db.obtener_estado_temporada()
@@ -701,8 +706,12 @@ def _render_temporada(request: Request, *, error=None, msg=None, avisos=None,
             "ciudades": ciudades,
             "referido_error": referido_error,
             "referido_form": referido_form or {},
+            # Cuando hay un CSV subido y sin confirmar, esto trae la
+            # comparación con lo que hay. Vacío el resto del tiempo.
+            "referido_csv": referido_csv,
             "max_largo_codigo": MAX_LARGO_CODIGO,
             "max_largo_empleado": MAX_LARGO_EMPLEADO,
+            "max_kb_directorio": MAX_BYTES_DIRECTORIO // 1024,
             "max_usuarios_por_codigo": db.MAX_USUARIOS_POR_CODIGO,
         },
     )
@@ -711,17 +720,23 @@ def _render_temporada(request: Request, *, error=None, msg=None, avisos=None,
 @router.get("/temporada", response_class=HTMLResponse,
             dependencies=[Depends(requiere_admin)])
 async def ver_temporada(request: Request, msg: str = "", error: str = "",
-                        ren: int = 0, reub: int = 0, sin: int = 0):
+                        ren: int = 0, reub: int = 0, sin: int = 0,
+                        alt: int = 0, baj: int = 0, act: int = 0):
     """
     Pinta la pantalla de temporada (y, al final, los códigos de referido).
 
-    `ren`, `reub` y `sin` son los números que dejó el POST de un referido en
-    el redirect: cuántas cuentas se renombraron, cuántas cambiaron de ciudad
-    y cuántas quedaron sin código. Viajan como enteros, no como texto, para
-    que el mensaje lo arme el servidor y no se pueda inyectar nada por la URL.
+    Los números son los que dejó el POST de un referido en el redirect:
+    cuántas cuentas se renombraron (`ren`), cambiaron de ciudad (`reub`) o
+    quedaron sin código (`sin`), y en el reemplazo por CSV cuántos códigos
+    entraron (`alt`), salieron (`baj`) o se actualizaron (`act`). Viajan
+    como enteros, no como texto, para que el mensaje lo arme el servidor y
+    no se pueda meter nada por la URL.
     """
-    return _render_temporada(request, msg=_mensaje_temporada(msg, ren, reub, sin),
-                             error=error or None)
+    return _render_temporada(
+        request,
+        msg=_mensaje_temporada(msg, ren, reub, sin, alt, baj, act),
+        error=error or None,
+    )
 
 
 async def _leer_subida(archivo):
@@ -919,7 +934,8 @@ def _cuentas(n: int) -> str:
     return "1 cuenta" if int(n) == 1 else f"{int(n)} cuentas"
 
 
-def _mensaje_temporada(clave: str, ren: int = 0, reub: int = 0, sin: int = 0):
+def _mensaje_temporada(clave: str, ren: int = 0, reub: int = 0, sin: int = 0,
+                       alt: int = 0, baj: int = 0, act: int = 0):
     """
     El mensaje verde de la pantalla de temporada.
 
@@ -933,7 +949,27 @@ def _mensaje_temporada(clave: str, ren: int = 0, reub: int = 0, sin: int = 0):
         return None
 
     extras = []
-    if clave == "ref_guardado":
+    if clave == "ref_csv":
+        # Se cuenta en sustantivos («2 códigos nuevos») y no en frases con
+        # verbo, para que valga igual en singular y en plural.
+        movimientos = []
+        if alt:
+            movimientos.append(_plural(alt, "código nuevo", "códigos nuevos"))
+        if baj:
+            movimientos.append(_plural(baj, "código dado de baja",
+                                       "códigos dados de baja"))
+        if act:
+            movimientos.append(_plural(act, "código actualizado",
+                                       "códigos actualizados"))
+        extras.append(", ".join(movimientos) + "." if movimientos
+                      else "el archivo decía exactamente lo que ya había.")
+        if sin:
+            extras.append(_plural(sin, "cuenta quedó", "cuentas quedaron") +
+                          " sin código, por los que se dieron de baja.")
+        if reub:
+            extras.append(_plural(reub, "cuenta cambió", "cuentas cambiaron") +
+                          " de ciudad.")
+    elif clave == "ref_guardado":
         if ren:
             extras.append(f"El código nuevo quedó en {_cuentas(ren)}.")
         if reub == 1:
@@ -1110,5 +1146,263 @@ async def borrar_referido(request: Request, codigo: str = Form("")):
     return RedirectResponse(
         url=(f"/admin/temporada?msg=ref_borrado"
              f"&sin={int(resultado.get('usuarios') or 0)}#referidos"),
+        status_code=303,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# REEMPLAZAR EL DIRECTORIO CON UN CSV
+# ──────────────────────────────────────────────────────────────────────────
+# Lo mismo que se hace con el catálogo, para los códigos: en vez de agregar
+# y quitar de uno en uno, se sube un archivo y manda el archivo.
+#
+# SUBIR NO ES REEMPLAZAR
+# ----------------------
+# El archivo se lee, se valida y se ENSEÑA lo que cambiaría; no se escribe
+# nada hasta que el admin confirma. Es el mismo paso de más que tiene
+# publicar la temporada, y por el mismo motivo: aquí se pueden borrar de un
+# golpe los 43 códigos con los que entra la gente.
+#
+# POR QUÉ EL ARCHIVO VIAJA DOS VECES
+# ----------------------------------
+# Entre revisar y confirmar hay que guardar en alguna parte el archivo ya
+# validado. En vez de crear una tabla de preparación (como `data_preparada`)
+# para unas pocas decenas de filas, el CSV normalizado vuelve al navegador
+# en un campo oculto y regresa al confirmar. Al confirmar se vuelve a leer y
+# a validar entero: lo que llega del formulario nunca se da por bueno.
+#
+# EL CSV
+# ------
+# Tres columnas: codigo, nombre, ciudad. Son las mismas que descarga el
+# botón de «Descargar el directorio», así que la ida y la vuelta encajan:
+# se descarga, se edita en Excel y se sube.
+
+COLUMNAS_DIRECTORIO = ("codigo", "nombre", "ciudad")
+
+# Cómo se llaman esas columnas cuando el archivo no viene del botón de
+# descargar (un Excel hecho a mano, una exportación de Supabase con otro
+# nombre). `leer_csv` ya dejó las cabeceras en minúsculas y sin espacios.
+ALIAS_DIRECTORIO = {
+    "código": "codigo",
+    "codigo_referido": "codigo",
+    "código_referido": "codigo",
+    "codigo referido": "codigo",
+    "referido": "codigo",
+    "nombres": "nombre",
+    "nombre completo": "nombre",
+    "empleado": "nombre",
+    "vendedor": "nombre",
+    "sede": "ciudad",
+}
+
+# El directorio son unas decenas de filas: con 1 MB sobra de largo. El tope
+# está para no cargar en memoria un archivo disparatado solo para acabar
+# diciéndole que no.
+MAX_BYTES_DIRECTORIO = 1024 * 1024
+
+
+def _plural(n: int, singular: str, plural: str) -> str:
+    """«1 código nuevo» / «3 códigos nuevos»."""
+    return f"1 {singular}" if int(n) == 1 else f"{int(n)} {plural}"
+
+
+def validar_directorio(df, ciudades):
+    """
+    Revisa el CSV del directorio. Devuelve `(filas, error, avisos)`.
+
+    `filas` son dicts {codigo, nombre, ciudad} ya limpios. Cada fila pasa
+    por `validar_referido`, el mismo que usa el formulario de una sola
+    fila: una cosa no puede ser válida subiéndola en lote e inválida
+    tecleándola.
+
+    El `error` bloquea; los `avisos` no. Los números de fila que se citan
+    son los del archivo tal como lo ve el admin en Excel (la cabecera es
+    la 1).
+    """
+    avisos = []
+
+    # Cabeceras: se traducen los nombres alternativos a los tres de siempre.
+    columnas = {}
+    for c in df.columns:
+        columnas.setdefault(ALIAS_DIRECTORIO.get(c, c), c)
+
+    faltan = [c for c in COLUMNAS_DIRECTORIO if c not in columnas]
+    if faltan:
+        return None, (
+            "Al archivo le faltan columnas: " + ", ".join(faltan) +
+            ". Tiene que traer codigo, nombre y ciudad, y la primera fila "
+            "deben ser los nombres de las columnas. Lo más fácil es "
+            "descargar el directorio actual y editar ese mismo archivo."
+        ), avisos
+
+    sobran = [c for c in df.columns if c not in columnas.values()]
+    if sobran:
+        avisos.append("Se ignoran columnas que el directorio no usa: "
+                      + ", ".join(sobran[:6]) + ("..." if len(sobran) > 6 else ""))
+
+    filas = []
+    vistos = {}
+    vacias = 0
+
+    for i, registro in enumerate(df.to_dict("records")):
+        numero = i + 2      # +2: la cabecera es la fila 1
+
+        codigo = str(registro.get(columnas["codigo"], "") or "").strip()
+        nombre = str(registro.get(columnas["nombre"], "") or "").strip()
+        ciudad = str(registro.get(columnas["ciudad"], "") or "").strip()
+
+        # Fila del todo vacía: Excel las deja al final y no significan nada.
+        if not codigo and not nombre and not ciudad:
+            vacias += 1
+            continue
+
+        codigo, nombre, ciudad, error = validar_referido(codigo, nombre, ciudad, ciudades)
+        if error:
+            return None, f"Fila {numero} del archivo: {error}", avisos
+
+        clave = codigo.lower()
+        if clave in vistos:
+            return None, (
+                f"El código «{codigo}» está dos veces en el archivo "
+                f"(filas {vistos[clave]} y {numero}). Los códigos no "
+                f"distinguen mayúsculas, así que no puede repetirse. Deja "
+                f"una sola fila por persona."
+            ), avisos
+        vistos[clave] = numero
+
+        filas.append({"codigo": codigo, "nombre": nombre, "ciudad": ciudad})
+
+    if not filas:
+        return None, (
+            "El archivo no trae ningún código. El directorio no se vacía "
+            "desde aquí: si hay que quitarlos todos, bórralos uno por uno."
+        ), avisos
+
+    if len(filas) > db.MAX_REFERIDOS:
+        return None, (f"El archivo trae {len(filas)} códigos y el máximo son "
+                      f"{db.MAX_REFERIDOS}."), avisos
+
+    if vacias:
+        avisos.append(f"Se saltaron {vacias} filas vacías del final del archivo.")
+
+    return filas, None, avisos
+
+
+def _a_csv(filas) -> str:
+    """Las filas validadas, otra vez como CSV, para el campo oculto."""
+    salida = io.StringIO()
+    escritor = csv.writer(salida, lineterminator="\n")
+    escritor.writerow(["codigo", "nombre", "ciudad"])
+    for f in filas:
+        escritor.writerow([f["codigo"], f["nombre"], f["ciudad"]])
+    return salida.getvalue()
+
+
+def _leer_directorio(datos: bytes, request: Request):
+    """
+    Bytes -> filas validadas. Devuelve `(filas, avisos, respuesta_de_error)`.
+
+    Si algo falla, la tercera es la pantalla ya pintada con el aviso y las
+    otras dos vienen vacías; quien llama solo tiene que devolverla.
+    """
+    def _no(mensaje):
+        return None, [], _render_temporada(request, referido_error=mensaje)
+
+    if len(datos) > MAX_BYTES_DIRECTORIO:
+        return _no(f"El archivo supera {MAX_BYTES_DIRECTORIO // 1024} KB. "
+                   f"El directorio son unas decenas de filas: revisa que sea "
+                   f"el archivo correcto.")
+
+    df, error = temporada_mod.leer_csv(datos)
+    if error:
+        return _no(error)
+
+    try:
+        ciudades = db.ciudades_conocidas()
+    except Exception as e:
+        return _no(_error_bd(e))
+
+    filas, error, avisos = validar_directorio(df, ciudades)
+    if error:
+        return _no(error)
+
+    return filas, avisos, None
+
+
+@router.get("/referidos/csv", dependencies=[Depends(requiere_admin)])
+async def descargar_directorio(request: Request):
+    """
+    El directorio actual en CSV.
+
+    Es el punto de partida para reemplazarlo: se descarga, se edita en
+    Excel y se vuelve a subir. Se manda con BOM (`utf-8-sig`) porque es lo
+    que hace que Excel abra las tildes bien en vez de en jeroglífico.
+    """
+    try:
+        contenido = db.exportar_directorio_csv()
+    except Exception as e:
+        return _render_temporada(request, referido_error=_error_bd(e))
+
+    return Response(
+        content=contenido.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="codigos_referido.csv"'},
+    )
+
+
+@router.post("/referidos/csv", dependencies=[Depends(requiere_admin)])
+async def revisar_directorio_csv(request: Request, archivo: UploadFile = File(None)):
+    """
+    Lee el archivo y enseña qué cambiaría. NO escribe nada.
+
+    El siguiente paso (confirmar) es otro clic y otra ruta, a propósito.
+    """
+    if archivo is None:
+        return _render_temporada(
+            request, referido_error="No llegó ningún archivo. Elige un CSV.")
+
+    datos = await archivo.read(MAX_BYTES_DIRECTORIO + 1)
+
+    filas, avisos, fallo = _leer_directorio(datos, request)
+    if fallo is not None:
+        return fallo
+
+    try:
+        comparacion = db.comparar_directorio(filas)
+    except Exception as e:
+        return _render_temporada(request, referido_error=_error_bd(e))
+
+    return _render_temporada(request, referido_csv={
+        "archivo": getattr(archivo, "filename", "") or "el archivo",
+        "comparacion": comparacion,
+        "avisos": avisos,
+        "contenido": _a_csv(filas),
+    })
+
+
+@router.post("/referidos/csv/confirmar", dependencies=[Depends(requiere_admin)])
+async def confirmar_directorio_csv(request: Request, contenido: str = Form("")):
+    """
+    Aplica el archivo que se acaba de revisar, en una sola transacción.
+
+    El CSV vuelve del campo oculto y se valida otra vez entero, como si
+    fuera la primera: entre la revisión y este clic pudo cambiar cualquier
+    cosa, y lo que llega de un formulario no se da por bueno nunca.
+    """
+    filas, _, fallo = _leer_directorio(str(contenido or "").encode("utf-8"), request)
+    if fallo is not None:
+        return fallo
+
+    try:
+        hecho = db.reemplazar_directorio(filas, str(request.session.get("user") or ""))
+    except Exception as e:
+        return _render_temporada(request, referido_error=_error_bd(e))
+
+    return RedirectResponse(
+        url=(f"/admin/temporada?msg=ref_csv"
+             f"&alt={hecho['altas']}&baj={hecho['bajas']}"
+             f"&act={hecho['actualizados']}"
+             f"&sin={hecho['cuentas_sin_codigo']}"
+             f"&reub={hecho['cuentas_reubicadas']}#referidos"),
         status_code=303,
     )
