@@ -216,6 +216,11 @@ def _error_bd(e: Exception) -> str:
             "Falta ejecutar migraciones/migracion_plantillas.sql en Supabase: "
             "la tabla de plantillas todavía no existe."
         )
+    if "abre_el" in texto or "cierra_el" in texto:
+        return (
+            "Falta ejecutar migraciones/migracion_fechas_temporada.sql en "
+            "Supabase: la temporada todavía no tiene columnas de fechas."
+        )
     if "does not exist" in texto:
         return (
             "Faltan tablas en la base de datos. Ejecuta los archivos de "
@@ -647,7 +652,9 @@ MENSAJES_TEMPORADA = {
     "descartado": "Se descartó lo que estaba preparado. Nada cambió para los clientes.",
     "publicada": "Temporada publicada: los clientes ya ven el catálogo nuevo.",
     "abierta": ("Temporada abierta. Los clientes ya pueden ver el catálogo "
-                "y reservar."),
+                "y reservar; se cerrará sola el último día del rango."),
+    "fechas": ("Fechas guardadas. La temporada se cierra sola el último día "
+               "del rango nuevo."),
     "cerrada": ("Temporada cerrada. Quien entre verá el aviso; tú sigues "
                 "navegando la tienda y entrando al panel."),
 }
@@ -692,6 +699,11 @@ def _render_temporada(request: Request, *, error=None, msg=None, avisos=None,
         "admin_temporada.html",
         {
             "estado": estado,
+            # Lo que pasa HOY con ese estado: si el rango de fechas ya venció,
+            # la tienda está cerrada aunque `estado.abierta` siga en true. La
+            # pantalla se pinta por esto, no por el interruptor a secas.
+            "vigencia": temporada_mod.vigencia(estado),
+            "hoy": temporada_mod.hoy_bogota(),
             "resumen": resumen,
             "catalogo_en_memoria": catalogo_actual,
             "error": error,
@@ -859,14 +871,62 @@ async def publicar(request: Request):
 
 
 @router.post("/temporada/abrir", dependencies=[Depends(requiere_admin)])
-async def abrir(request: Request):
+async def abrir(request: Request, desde: str = Form(""), hasta: str = Form("")):
+    """
+    Abre la tienda con un rango de fechas obligatorio.
+
+    Las dos fechas son el punto de todo esto: con ellas la temporada se
+    cierra sola el último día y nadie tiene que acordarse de entrar a
+    cerrarla. Por eso abrir sin fechas no es una opción.
+    """
+    usuario = str(request.session.get("user") or "")
+
+    # Si falta la migración de fechas, la pantalla ya enseñó el botón de
+    # siempre (sin rango) y lo que no puede pasar es que la tienda se quede
+    # sin poder abrirse por una migración pendiente.
     try:
-        db.abrir_temporada(str(request.session.get("user") or ""))
+        if not db.obtener_estado_temporada().get("fechas_ok", True):
+            db.abrir_temporada_sin_fechas(usuario)
+            temporada_mod.invalidar_cache()
+            return RedirectResponse(url="/admin/temporada?msg=abierta",
+                                    status_code=303)
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    desde_f, hasta_f, error = temporada_mod.validar_rango(desde, hasta)
+    if error:
+        return _render_temporada(request, error=error)
+
+    try:
+        db.abrir_temporada(usuario, desde_f, hasta_f)
     except Exception as e:
         return _render_temporada(request, error=_error_bd(e))
 
     temporada_mod.invalidar_cache()
     return RedirectResponse(url="/admin/temporada?msg=abierta", status_code=303)
+
+
+@router.post("/temporada/fechas", dependencies=[Depends(requiere_admin)])
+async def cambiar_fechas(request: Request, desde: str = Form(""),
+                         hasta: str = Form("")):
+    """
+    Alarga, recorta o adelanta una temporada que ya está abierta.
+
+    Sin esto, estirar una campaña un día más obligaría a cerrarla y volver a
+    abrirla, que es la vuelta que queríamos quitar.
+    """
+    desde_f, hasta_f, error = temporada_mod.validar_rango(desde, hasta)
+    if error:
+        return _render_temporada(request, error=error)
+
+    try:
+        db.cambiar_fechas_temporada(str(request.session.get("user") or ""),
+                                    desde_f, hasta_f)
+    except Exception as e:
+        return _render_temporada(request, error=_error_bd(e))
+
+    temporada_mod.invalidar_cache()
+    return RedirectResponse(url="/admin/temporada?msg=fechas", status_code=303)
 
 
 @router.post("/temporada/cerrar", dependencies=[Depends(requiere_admin)])

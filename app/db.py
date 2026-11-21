@@ -1216,6 +1216,17 @@ def _lista_columnas(columnas) -> str:
     return ", ".join(f'"{c}"' if "." in c or c != c.lower() else c for c in columnas)
 
 
+# Lo que siempre ha tenido la tabla, y lo que le añadio
+# migracion_fechas_temporada.sql. Van aparte porque el codigo nuevo puede
+# llegar a Render antes de que alguien corra esa migracion en Supabase.
+_ESTADO_BASE = """abierta, version, parrafo_preparado,
+                  data_filas, data_en, data_por,
+                  excluidos_filas, excluidos_en, excluidos_por,
+                  parrafo_en, parrafo_por"""
+
+_ESTADO_FECHAS = "abre_el, cierra_el"
+
+
 def obtener_estado_temporada() -> dict:
     """
     El estado de la temporada y lo que hay preparado.
@@ -1223,27 +1234,40 @@ def obtener_estado_temporada() -> dict:
     Devuelve siempre un dict, incluso si la tabla no existiera todavia
     (falta correr la migracion): en ese caso `existe` viene en False y la
     tienda se comporta como abierta, para no dejarla caida por eso.
-    """
-    try:
-        with _get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT abierta, version, parrafo_preparado,
-                              data_filas, data_en, data_por,
-                              excluidos_filas, excluidos_en, excluidos_por,
-                              parrafo_en, parrafo_por
-                         FROM temporada WHERE id IS TRUE"""
-                )
-                fila = cur.fetchone()
-    except Exception as e:
-        print(f"⚠️  No se pudo leer el estado de la temporada: {e}")
-        return {"existe": False, "abierta": True, "version": 0}
 
-    if not fila:
-        return {"existe": False, "abierta": True, "version": 0}
+    SI FALTAN LAS COLUMNAS DE FECHAS se reintenta sin ellas, y el dict trae
+    `fechas_ok` en False. Es por el momento en que el codigo nuevo ya esta
+    desplegado y la migracion todavia no se ha corrido: sin este reintento,
+    la consulta entera fallaria y una tienda CERRADA a mano se abriria sola
+    al publico, que es el peor desenlace posible de una migracion pendiente.
+    """
+    fila, fechas_ok, ultimo_error = None, True, None
+
+    for columnas, con_fechas in ((f"{_ESTADO_BASE}, {_ESTADO_FECHAS}", True),
+                                 (_ESTADO_BASE, False)):
+        try:
+            with _get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT {columnas} FROM temporada WHERE id IS TRUE"
+                    )
+                    fila = cur.fetchone()
+            fechas_ok = con_fechas
+            break
+        except Exception as e:
+            ultimo_error = e
+            if con_fechas and ("abre_el" in str(e) or "cierra_el" in str(e)):
+                continue      # falta la migracion de fechas: se prueba sin ellas
+            break
+
+    if fila is None:
+        if ultimo_error is not None:
+            print(f"⚠️  No se pudo leer el estado de la temporada: {ultimo_error}")
+        return {"existe": False, "abierta": True, "version": 0, "fechas_ok": False}
 
     estado = dict(fila)
     estado["existe"] = True
+    estado["fechas_ok"] = fechas_ok
     estado["abierta"] = bool(estado["abierta"])
     estado["version"] = int(estado["version"])
     return estado
@@ -1496,23 +1520,87 @@ def publicar_temporada(usuario: str) -> dict:
     return hecho
 
 
-def abrir_temporada(usuario: str):
-    """Abre la tienda al publico."""
+def abrir_temporada(usuario: str, abre_el, cierra_el):
+    """
+    Abre la tienda al publico con un rango de fechas.
+
+    `abre_el` y `cierra_el` son `date` (hora de Colombia): la temporada vale
+    desde el comienzo del primer dia hasta el final del ultimo. Quien decide
+    si HOY cae dentro no es esta funcion sino `temporada.vigencia()`, que lo
+    calcula en cada peticion; aqui solo se guardan las fechas.
+
+    Gracias a eso la tienda se cierra sola al pasar `cierra_el` sin que nadie
+    entre al panel: no hay tarea programada que pueda no correr, ni fila que
+    actualizar a medianoche.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE temporada
+                      SET abierta = true, abre_el = %s, cierra_el = %s
+                    WHERE id IS TRUE""",
+                (abre_el, cierra_el),
+            )
+            _bump(cur, usuario)
+            _auditar(cur, usuario, "abrir_temporada",
+                     {"abre_el": str(abre_el), "cierra_el": str(cierra_el)})
+
+
+def abrir_temporada_sin_fechas(usuario: str):
+    """
+    Abre la tienda como se hacia antes de que existieran las fechas.
+
+    Solo se usa si falta la migracion de fechas (ver obtener_estado_temporada):
+    es preferible poder abrir la tienda a mano que no poder abrirla.
+    """
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE temporada SET abierta = true WHERE id IS TRUE")
             _bump(cur, usuario)
-            _auditar(cur, usuario, "abrir_temporada", {})
+            _auditar(cur, usuario, "abrir_temporada", {"sin_fechas": True})
+
+
+def cambiar_fechas_temporada(usuario: str, abre_el, cierra_el):
+    """
+    Mueve el rango de una temporada que ya esta abierta (alargarla, recortarla
+    o adelantarla) sin pasar por cerrar y volver a abrir.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE temporada
+                      SET abre_el = %s, cierra_el = %s
+                    WHERE id IS TRUE""",
+                (abre_el, cierra_el),
+            )
+            _bump(cur, usuario)
+            _auditar(cur, usuario, "cambiar_fechas_temporada",
+                     {"abre_el": str(abre_el), "cierra_el": str(cierra_el)})
 
 
 def cerrar_temporada(usuario: str):
     """
     Cierra la tienda: quien entre ve el aviso de temporada cerrada y no
     puede reservar. El admin sigue entrando al panel.
+
+    Las fechas se borran: el rango era el de la temporada que se acaba de
+    cerrar, y dejarlo puesto haria que el panel enseñara como vigente algo
+    que ya no lo es. La proxima vez se pide uno nuevo.
     """
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE temporada SET abierta = false WHERE id IS TRUE")
+            try:
+                cur.execute(
+                    """UPDATE temporada
+                          SET abierta = false, abre_el = NULL, cierra_el = NULL
+                        WHERE id IS TRUE"""
+                )
+            except psycopg.errors.UndefinedColumn:
+                # Falta la migracion de fechas. Cerrar la tienda no puede
+                # depender de eso: se cierra igual, sin tocar las columnas
+                # que no existen.
+                conn.rollback()
+                cur.execute("UPDATE temporada SET abierta = false WHERE id IS TRUE")
             _bump(cur, usuario)
             _auditar(cur, usuario, "cerrar_temporada", {})
 

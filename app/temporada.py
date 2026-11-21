@@ -28,8 +28,14 @@ pide que sepa nada de esto.
 
 import csv
 import io
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
+
+# Colombia no usa horario de verano: siempre UTC-5. Mismo criterio que
+# app/db.py, repetido aqui para no importar db solo por una constante (este
+# modulo se carga antes y no depende de la base).
+BOGOTA_TZ = timezone(timedelta(hours=-5))
 
 
 # ── Limites ───────────────────────────────────────────────────────────────
@@ -284,6 +290,124 @@ def validar_parrafo(texto: str):
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# LAS FECHAS DE LA TEMPORADA
+# ──────────────────────────────────────────────────────────────────────────
+# Al abrir se dice desde que dia y hasta que dia vale la temporada. Pasado
+# el ultimo dia la tienda se cierra SOLA: nadie tiene que entrar al panel a
+# cerrarla, que era justo lo que se olvidaba.
+#
+# No hay tarea programada ni nada que corra a medianoche. El rango se guarda
+# y `vigencia()` lo compara con el dia de hoy en cada peticion (cacheado 10
+# segundos, igual que el resto del estado). Una tarea programada puede no
+# correr; una resta de fechas, no.
+#
+# Las dos fechas son INCLUSIVAS: «del 28 al 30» abre el 28 a las 00:00 y
+# cierra el 30 al final del dia, que es como lo lee cualquiera.
+
+MAX_DIAS_TEMPORADA = 370       # un año y pico: mas que eso es un error de tecleo
+
+
+def hoy_bogota():
+    """
+    El dia de hoy en Colombia (UTC-5 fijo, sin horario de verano).
+
+    Se calcula aqui y no con la fecha del servidor porque Render corre en
+    UTC: a partir de las 7 de la tarde colombiana, `date.today()` ya seria
+    el dia siguiente y una temporada se cerraria cinco horas antes.
+    """
+    return datetime.now(BOGOTA_TZ).date()
+
+
+def _a_fecha(valor):
+    """Un `date` a partir de lo que venga (date, datetime o 'AAAA-MM-DD')."""
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    return date.fromisoformat(str(valor).strip())
+
+
+def validar_rango(desde: str, hasta: str, hoy=None):
+    """
+    Revisa el rango que viene del formulario. Devuelve `(desde, hasta, error)`.
+
+    Las dos fechas son obligatorias: abrir sin fecha de cierre es justo lo
+    que se quiere evitar. El error es un mensaje para enseñar tal cual.
+    """
+    hoy = hoy or hoy_bogota()
+
+    try:
+        d = _a_fecha(desde)
+        h = _a_fecha(hasta)
+    except ValueError:
+        return None, None, "Las fechas no se entienden. Usa el calendario."
+
+    if d is None or h is None:
+        return None, None, ("Di desde qué día y hasta qué día va a estar "
+                            "activa la temporada. Las dos fechas hacen falta.")
+
+    if h < d:
+        return None, None, ("La fecha de cierre no puede ser anterior a la de "
+                            "apertura.")
+
+    if h < hoy:
+        return None, None, ("Esa temporada ya habría terminado: la fecha de "
+                            "cierre es anterior a hoy.")
+
+    if (h - d).days + 1 > MAX_DIAS_TEMPORADA:
+        return None, None, (f"Una temporada no puede durar más de "
+                            f"{MAX_DIAS_TEMPORADA} días. Revisa las fechas.")
+
+    return d, h, None
+
+
+def vigencia(estado: dict, hoy=None) -> dict:
+    """
+    Traduce lo guardado en `temporada` a lo que pasa HOY.
+
+    Devuelve:
+        abierta   bool    si la tienda se ve o no
+        motivo    str     por que (ver abajo)
+        abre_el   date|None
+        cierra_el date|None
+        dias      int|None  dias que le quedan, contando hoy
+
+    Motivos:
+        "abierta"       dentro del rango (o sin fechas, ver abajo)
+        "a_mano"        alguien la cerro desde el panel
+        "no_empieza"    abierta, pero su primer dia aun no llega
+        "termino"       se paso la fecha de cierre: se cerro sola
+
+    Una temporada abierta SIN fechas se considera abierta. Es el caso de las
+    que ya estaban corriendo cuando se añadieron estas columnas: no tendria
+    sentido cerrarlas de golpe por un dato que nadie pudo escribir.
+    """
+    hoy = hoy or hoy_bogota()
+
+    try:
+        abre = _a_fecha(estado.get("abre_el"))
+        cierra = _a_fecha(estado.get("cierra_el"))
+    except (ValueError, TypeError):
+        abre = cierra = None
+
+    base = {"abre_el": abre, "cierra_el": cierra, "dias": None}
+
+    if not estado.get("abierta", True):
+        return {**base, "abierta": False, "motivo": "a_mano"}
+
+    if cierra is not None and hoy > cierra:
+        return {**base, "abierta": False, "motivo": "termino"}
+
+    if abre is not None and hoy < abre:
+        return {**base, "abierta": False, "motivo": "no_empieza"}
+
+    dias = (cierra - hoy).days + 1 if cierra is not None else None
+    return {**base, "abierta": True, "motivo": "abierta", "dias": dias}
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # LA TEMPORADA EN MARCHA
 # ──────────────────────────────────────────────────────────────────────────
 # Lo de arriba lee archivos. Lo de aqui responde, en cada peticion, a dos
@@ -334,7 +458,16 @@ def invalidar_cache():
 
 def estado_vigente() -> dict:
     """
-    {"abierta": bool, "version": int, "existe": bool}, con cache.
+    {"abierta": bool, "motivo": str, "version": int, "existe": bool}, con cache.
+
+    `abierta` es lo que ve el cliente HOY: el interruptor del panel Y el
+    rango de fechas (ver `vigencia`). Por eso la tienda se cierra sola al
+    pasar la fecha de fin, en todas las copias del servidor, sin que nadie
+    publique nada: cada una recalcula la comparacion al vencer su cache.
+
+    Ojo con el cache: `_cache` guarda la comparacion ya hecha, asi que al
+    cambiar el dia puede tardar hasta TTL_SEGUNDOS en reflejarse. Para una
+    temporada que cambia a medianoche, diez segundos no son nada.
 
     Nunca lanza excepcion ni bloquea la tienda: si la base no responde, se
     asume ABIERTA. Dejar la tienda cerrada por un fallo de red seria peor
@@ -347,13 +480,16 @@ def estado_vigente() -> dict:
     try:
         from app import db
         estado = db.obtener_estado_temporada()
-        valor = {"abierta": bool(estado.get("abierta", True)),
+        vig = vigencia(estado)
+        valor = {"abierta": bool(vig["abierta"]),
+                 "motivo": vig["motivo"],
                  "version": int(estado.get("version", 0)),
                  "existe": bool(estado.get("existe", False))}
         espera = TTL_SEGUNDOS
     except Exception as e:
         print(f"⚠️  No se pudo leer el estado de la temporada: {e}")
-        valor = {"abierta": True, "version": _version_cargada["valor"] or 0,
+        valor = {"abierta": True, "motivo": "abierta",
+                 "version": _version_cargada["valor"] or 0,
                  "existe": False}
         espera = TTL_FALLO
 

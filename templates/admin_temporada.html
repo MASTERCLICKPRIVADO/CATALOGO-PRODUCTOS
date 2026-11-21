@@ -41,6 +41,39 @@
   #estado-tienda { border-radius: 18px; padding: 22px 24px; margin-top: 22px; }
   #estado-tienda.abierta { background: #f1f4e8; border: 2px solid #8a8f64; }
   #estado-tienda.cerrada { background: #fbeaea; border: 2px dashed #c62828; }
+  #estado-tienda.espera { background: #fff8e1; border: 2px dashed #d9a400; }
+
+  /* ── Fechas de la temporada ───────────────────────────────────────── */
+  /* El rango es obligatorio al abrir: es lo que hace que la tienda se
+     cierre sola el último día y nadie tenga que entrar a cerrarla. */
+  .rango {
+    display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+    margin: 0 0 14px;
+  }
+  .rango label { display: block; font-size: 12px; font-weight: bold;
+                 color: #6e7350; text-transform: uppercase; letter-spacing: .5px;
+                 margin-bottom: 5px; }
+  .rango input[type=date] {
+    padding: 10px 12px; border: 1px solid #c8cdb0; border-radius: 10px;
+    font-family: inherit; font-size: 14px; background: white; color: #444;
+    min-width: 165px;
+  }
+  .rango input[type=date]:focus { outline: 2px solid #8a8f64; outline-offset: 1px; }
+  .vigencia {
+    display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: white; border: 1px solid #d9dcc6; border-radius: 12px;
+    padding: 9px 14px; margin: 0 0 16px; font-size: 14px; color: #555;
+  }
+  .vigencia strong { color: #4a4f33; }
+  .vigencia .quedan {
+    background: #eef0e4; color: #6e7350; border-radius: 999px;
+    padding: 2px 10px; font-size: 12px; font-weight: bold;
+  }
+  .vigencia .quedan.poco { background: #ffe9b8; color: #8d6e00; }
+  @media (max-width: 700px) {
+    .rango { gap: 10px; }
+    .rango > div, .rango input[type=date], .rango button { width: 100%; }
+  }
   .rotulo { font-size: 12px; font-weight: bold; text-transform: uppercase;
             letter-spacing: 1px; margin: 0 0 6px; }
 
@@ -222,31 +255,174 @@
     </div>
     {% endif %}
 
+    {# La tabla existe pero le faltan las columnas de fechas: todo lo demás
+       sigue funcionando como siempre; lo único que no se puede es guardar
+       un rango, así que el aviso lo dice y no tapa la pantalla. #}
+    {% if estado.existe and not estado.fechas_ok %}
+    <div class="caja-aviso caja-ojo">
+      <strong>Falta correr una migración para las fechas.</strong><br>
+      Ejecuta <code>migraciones/migracion_fechas_temporada.sql</code> en
+      Supabase. Hasta entonces la temporada se abre y se cierra a mano, como
+      antes: no se puede guardar el rango de fechas ni cerrarse sola.
+    </div>
+    {% endif %}
+
     <!-- ── Estado de la tienda ────────────────────────────────────────── -->
-    <div id="estado-tienda" class="{% if estado.abierta %}abierta{% else %}cerrada{% endif %}">
-      {% if estado.abierta %}
+    {#
+       La pantalla se pinta por `vigencia`, no por `estado.abierta`: una
+       temporada cuyo último día ya pasó está cerrada para el cliente
+       aunque el interruptor de la tabla siga en true. Los cuatro motivos
+       posibles los calcula temporada.vigencia().
+    #}
+    <div id="estado-tienda" class="{% if vigencia.abierta %}abierta{% elif vigencia.motivo == 'no_empieza' %}espera{% else %}cerrada{% endif %}">
+
+      {% if vigencia.abierta %}
       <p class="rotulo" style="color: #6e7350;">● Temporada abierta</p>
-      <p style="margin: 0 0 16px; color: #555;">
+      <p style="margin: 0 0 14px; color: #555;">
         Los clientes ven el catálogo y pueden reservar. En memoria hay
         <strong>{{ "{:,}".format(catalogo_en_memoria).replace(",", ".") }}</strong>
         filas de catálogo.
       </p>
+
+      {% if vigencia.cierra_el %}
+      <p class="vigencia">
+        Activa del <strong>{{ vigencia.abre_el.strftime('%d/%m/%Y') }}</strong>
+        al <strong>{{ vigencia.cierra_el.strftime('%d/%m/%Y') }}</strong>
+        <span class="quedan {% if vigencia.dias <= 3 %}poco{% endif %}">
+          {% if vigencia.dias == 1 %}último día{% else %}quedan {{ vigencia.dias }} días{% endif %}
+        </span>
+      </p>
+      <p style="font-size: 13px; color: #777; margin: -6px 0 16px;">
+        Se cierra sola al terminar el {{ vigencia.cierra_el.strftime('%d/%m/%Y') }}.
+        No hace falta que entres a cerrarla.
+      </p>
+      {% elif estado.fechas_ok %}
+      {# Temporada abierta antes de que existieran las fechas: sigue abierta,
+         pero sin fecha de cierre no se cierra sola. #}
+      <div class="caja-aviso caja-ojo" style="margin: 0 0 16px;">
+        Esta temporada no tiene fechas, así que <strong>no se cierra
+        sola</strong>. Ponle un rango abajo y se encarga ella.
+      </div>
+      {% endif %}
+
+      {% if estado.fechas_ok %}
+      <details class="ejemplo" style="margin: 0 0 16px;">
+        <summary>{% if vigencia.cierra_el %}Cambiar las fechas{% else %}Ponerle fechas{% endif %}</summary>
+        <div class="ejemplo-cuerpo">
+          <form method="post" action="/admin/temporada/fechas" class="form-fechas" style="margin: 0;">
+            <div class="rango">
+              <div>
+                <label for="f-desde-abierta">Desde</label>
+                <input type="date" id="f-desde-abierta" name="desde" required
+                       value="{{ vigencia.abre_el.isoformat() if vigencia.abre_el else hoy.isoformat() }}">
+              </div>
+              <div>
+                <label for="f-hasta-abierta">Hasta</label>
+                <input type="date" id="f-hasta-abierta" name="hasta" required
+                       min="{{ hoy.isoformat() }}"
+                       value="{{ vigencia.cierra_el.isoformat() if vigencia.cierra_el else '' }}">
+              </div>
+              <button type="submit" class="btn"
+                      style="width: auto; padding: 10px 22px; background: #8a8f64; margin: 0;">
+                Guardar fechas
+              </button>
+            </div>
+          </form>
+          <p style="margin: 0;">El último día cuenta entero: la tienda cierra
+             cuando termina ese día.</p>
+        </div>
+      </details>
+      {% endif %}
+
       <form method="post" action="/admin/temporada/cerrar" id="form-cerrar" style="margin: 0;">
         <button type="submit" class="btn" style="width: auto; padding: 11px 26px; background: #c62828;">
-          Cerrar temporada
+          Cerrar temporada ya
         </button>
       </form>
+
+      {% elif vigencia.motivo == 'no_empieza' %}
+      <p class="rotulo" style="color: #8d6e00;">◷ Temporada programada</p>
+      <p style="margin: 0 0 14px; color: #555;">
+        Todavía no empieza: hasta entonces quien entre ve el aviso de
+        temporada cerrada. Tú sigues navegando la tienda y entrando al panel.
+      </p>
+      <p class="vigencia">
+        Abre sola el <strong>{{ vigencia.abre_el.strftime('%d/%m/%Y') }}</strong>
+        {% if vigencia.cierra_el %}
+        y cierra el <strong>{{ vigencia.cierra_el.strftime('%d/%m/%Y') }}</strong>
+        {% endif %}
+      </p>
+      <form method="post" action="/admin/temporada/fechas" class="form-fechas" style="margin: 0 0 14px;">
+        <div class="rango">
+          <div>
+            <label for="f-desde-espera">Desde</label>
+            <input type="date" id="f-desde-espera" name="desde" required
+                   value="{{ vigencia.abre_el.isoformat() }}">
+          </div>
+          <div>
+            <label for="f-hasta-espera">Hasta</label>
+            <input type="date" id="f-hasta-espera" name="hasta" required
+                   min="{{ hoy.isoformat() }}"
+                   value="{{ vigencia.cierra_el.isoformat() if vigencia.cierra_el else '' }}">
+          </div>
+          <button type="submit" class="btn"
+                  style="width: auto; padding: 10px 22px; background: #8a8f64; margin: 0;">
+            Guardar fechas
+          </button>
+        </div>
+      </form>
+      <form method="post" action="/admin/temporada/cerrar" id="form-cancelar" style="margin: 0;">
+        <button type="submit" class="enlace-descartar">Cancelar la programación</button>
+      </form>
+
       {% else %}
       <p class="rotulo" style="color: #c62828;">○ Temporada cerrada</p>
-      <p style="margin: 0 0 16px; color: #555;">
+      {% if vigencia.motivo == 'termino' %}
+      <p style="margin: 0 0 14px; color: #555;">
+        Se cerró sola al terminar el
+        <strong>{{ vigencia.cierra_el.strftime('%d/%m/%Y') }}</strong>, como
+        decían sus fechas. Quien entre ve el aviso de temporada cerrada.
+      </p>
+      {% else %}
+      <p style="margin: 0 0 14px; color: #555;">
         Quien entre ve el aviso de temporada cerrada. No se ve el catálogo ni
         se puede reservar. Tú sigues entrando a este panel.
       </p>
-      <form method="post" action="/admin/temporada/abrir" id="form-abrir" style="margin: 0;">
+      {% endif %}
+
+      {% if not estado.fechas_ok %}
+      {# Sin las columnas de fechas no hay rango que guardar: el botón de
+         siempre, para no dejar la tienda sin poder abrirse. #}
+      <form method="post" action="/admin/temporada/abrir" style="margin: 0;">
         <button type="submit" class="btn" style="width: auto; padding: 11px 26px; background: #8a8f64;">
           Abrir temporada
         </button>
       </form>
+      {% else %}
+      <form method="post" action="/admin/temporada/abrir" id="form-abrir" class="form-fechas" style="margin: 0;">
+        <div class="rango">
+          <div>
+            <label for="f-desde">Desde</label>
+            <input type="date" id="f-desde" name="desde" required
+                   value="{{ hoy.isoformat() }}">
+          </div>
+          <div>
+            <label for="f-hasta">Hasta</label>
+            <input type="date" id="f-hasta" name="hasta" required
+                   min="{{ hoy.isoformat() }}">
+          </div>
+          <button type="submit" class="btn"
+                  style="width: auto; padding: 11px 26px; background: #8a8f64; margin: 0;">
+            Abrir temporada
+          </button>
+        </div>
+      </form>
+      <p style="font-size: 13px; color: #777; margin: 0;">
+        Las dos fechas hacen falta. Con ellas la tienda se cierra sola el
+        último día y no tienes que volver aquí a cerrarla. Si pones una fecha
+        de inicio futura, abre sola ese día.
+      </p>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -463,8 +639,11 @@ JZ3160;AFC A JSY;1</pre>
           Publicar temporada
         </button>
         <p style="font-size: 12px; color: #888; margin: 12px 0 0;">
-          {% if estado.abierta %}
+          {% if vigencia.abierta %}
             La tienda está abierta: el cambio se ve de inmediato.
+          {% elif vigencia.motivo == 'no_empieza' %}
+            La temporada aún no empieza: se publicará, pero nadie lo verá
+            hasta el {{ vigencia.abre_el.strftime('%d/%m/%Y') }}.
           {% else %}
             La tienda está cerrada: se publicará, pero nadie lo verá hasta que
             la abras.
@@ -879,9 +1058,63 @@ JZ3160;AFC A JSY;1</pre>
     '¿Cerrar la temporada?\n\nQuien entre verá el aviso de temporada ' +
     'cerrada y nadie podrá reservar.', 'Cerrando...');
 
-  confirmar('form-abrir',
-    '¿Abrir la temporada?\n\nLos clientes van a ver el catálogo que esté ' +
-    'publicado ahora mismo.', 'Abriendo...');
+  confirmar('form-cancelar',
+    '¿Cancelar la programación?\n\nLa temporada deja de tener fechas y no ' +
+    'abrirá sola. Puedes volver a programarla cuando quieras.', 'Cancelando...');
+
+  /*
+    Abrir: el aviso dice las fechas que se acaban de escribir, porque son
+    lo que decide hasta cuándo estará abierta. El confirm salta DESPUÉS de
+    la validación del navegador, así que aquí los dos campos ya vienen
+    llenos.
+  */
+  var abrir = document.getElementById('form-abrir');
+  if (abrir) {
+    abrir.addEventListener('submit', function (e) {
+      var d = abrir.querySelector('[name=desde]').value;
+      var h = abrir.querySelector('[name=hasta]').value;
+      var aviso = '¿Abrir la temporada del ' + enDia(d) + ' al ' + enDia(h) +
+        '?\n\nLos clientes van a ver el catálogo que esté publicado ahora ' +
+        'mismo, y la tienda se cerrará sola al terminar el ' + enDia(h) + '.';
+      if (!confirm(aviso)) { e.preventDefault(); return; }
+      alNavegar(abrir.querySelector('button[type=submit]'), 'Abriendo...');
+    });
+  }
+
+  // 'AAAA-MM-DD' -> 'DD/MM/AAAA'. Sin new Date(): con una fecha suelta el
+  // navegador la interpreta en UTC y en Colombia saldría el día anterior.
+  function enDia(iso) {
+    var p = String(iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  /*
+    La fecha de cierre nunca puede ser anterior a la de apertura. El
+    servidor lo revisa igual (validar_rango), pero así el calendario ya no
+    deja escoger un día imposible.
+  */
+  Array.prototype.forEach.call(document.querySelectorAll('.form-fechas'), function (f) {
+    var desde = f.querySelector('[name=desde]');
+    var hasta = f.querySelector('[name=hasta]');
+    if (!desde || !hasta) return;
+
+    function alinear() {
+      if (desde.value && desde.value > hasta.min) { hasta.min = desde.value; }
+      if (desde.value && hasta.value && hasta.value < desde.value) {
+        hasta.value = desde.value;
+      }
+    }
+    alinear();
+    desde.addEventListener('change', alinear);
+
+    // Abrir ya tiene su propio manejador (con confirmación); los de guardar
+    // fechas solo necesitan la ruedita.
+    if (f.id !== 'form-abrir') {
+      f.addEventListener('submit', function () {
+        alNavegar(f.querySelector('button[type=submit]'), 'Guardando...');
+      });
+    }
+  });
 
   // Publicar es el único irreversible: el aviso lo dice sin rodeos.
   var publicar = document.getElementById('form-publicar');
