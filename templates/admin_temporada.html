@@ -59,6 +59,46 @@
     background: #8a8f64; color: white; font-size: 11px; font-weight: bold;
     padding: 3px 10px; border-radius: 999px; text-transform: uppercase;
   }
+
+  /* ── Ejemplo de encabezados ───────────────────────────────────────── */
+  /* Va plegado: el que ya sabe cómo es su archivo no lo abre nunca, y el
+     que se olvidó de los nombres los tiene a un clic (y los puede copiar
+     tal cual a la primera fila del Excel). */
+  .ejemplo { margin: 0 0 14px; }
+  .ejemplo > summary {
+    cursor: pointer; font-size: 13px; color: #6e7350; font-weight: bold;
+    list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .ejemplo > summary::-webkit-details-marker { display: none; }
+  .ejemplo > summary::before { content: "▸"; font-size: 11px; }
+  .ejemplo[open] > summary::before { content: "▾"; }
+  .ejemplo > summary:hover { text-decoration: underline; }
+  .ejemplo-cuerpo {
+    border: 1px solid #e8e8e0; border-left: 3px solid #8a8f64;
+    border-radius: 10px; background: white; padding: 12px 14px; margin-top: 8px;
+  }
+  .ejemplo-cuerpo p { font-size: 12.5px; color: #777; margin: 0 0 7px;
+                      line-height: 1.5; }
+  .ejemplo-cuerpo p + pre { margin-top: 0; }
+  .ejemplo-cuerpo code { background: #f1f2ea; color: #5f6448; padding: 1px 5px;
+                         border-radius: 5px; font-size: 12px; }
+  .ejemplo-lista { margin: 0 0 7px; padding-left: 20px; font-size: 12.5px;
+                   color: #777; line-height: 1.6; }
+  .ejemplo-lista li { margin-bottom: 3px; }
+  .ejemplo-cab {
+    background: #f7f8f2; border: 1px solid #e8e8e0; border-radius: 8px;
+    padding: 10px 12px; margin: 0 0 9px; overflow-x: auto;
+    font-family: Consolas, Menlo, monospace; font-size: 12px; color: #4a4f33;
+    white-space: pre; line-height: 1.5;
+  }
+  .ejemplo-cab.fila { color: #888; }
+  .btn-copiar {
+    background: white; border: 1px solid #c8cdb0; color: #6e7350;
+    font-size: 12px; font-weight: bold; padding: 6px 13px; border-radius: 999px;
+    cursor: pointer; width: auto; margin: 0 0 10px;
+  }
+  .btn-copiar:hover { background: #f1f4e8; }
+  .btn-copiar.copiado { background: #8a8f64; border-color: #8a8f64; color: white; }
   .enlace-descartar {
     background: none; border: none; color: #c62828; font-size: 13px;
     cursor: pointer; text-decoration: underline; width: auto; padding: 0;
@@ -217,6 +257,36 @@
          descuento e inventario.</p>
       {% endif %}
 
+      <details class="ejemplo">
+        <summary>Ver cómo van los encabezados</summary>
+        <div class="ejemplo-cuerpo">
+          <p>La <strong>primera fila</strong> del archivo son los nombres de las
+             columnas. Estos, escritos igual (en minúsculas) y separados por
+             punto y coma:</p>
+          <pre class="ejemplo-cab" id="cab-catalogo">tienda;inventario;ciudad;referencia;talla;nombre;division;precio_antes;genero;edad;deporte;tipo_producto;dcto;precio_ahora;categoria;subcategoria;talla_cm;talla_co;talla_u.s_co;aplica</pre>
+          <button type="button" class="btn-copiar" data-copiar="cab-catalogo">
+            Copiar encabezados</button>
+          <p>Y debajo una fila por artículo:</p>
+          <pre class="ejemplo-cab fila">MASTER 93;4;Bucaramanga;IH7519;M;CAMISETA ENTRENO;Performance;219950;Hombre;Adulto;Futbol;Camiseta;30;153965;Ropa;Camisetas;;M;M;si</pre>
+          <p>Sin estas cuatro no se puede publicar: <code>referencia</code>,
+             <code>talla</code>, <code>ciudad</code> e <code>inventario</code>.
+             Las demás pueden ir vacías.</p>
+          <p>La columna <code>aplica</code> es la que decide si ese artículo
+             recibe el descuento por cantidad del carrito. En cada fila se
+             escribe una de dos palabras:</p>
+          <ul class="ejemplo-lista">
+            <li><code>si</code> → el artículo <strong>sí</strong> recibe ese
+                descuento.</li>
+            <li><code>no</code> → el artículo <strong>no</strong> lo recibe:
+                se queda con su precio, aunque sigue contando como unidad para
+                llegar al tramo de descuento de los demás.</li>
+          </ul>
+          <p>Es el mismo archivo que exporta Supabase, así que lo más fácil es
+             subir ese tal cual. Si lo armas en Excel, también vale separar
+             por comas.</p>
+        </div>
+      </details>
+
       {# Los dos formularios van uno al lado del otro, NUNCA uno dentro del
          otro: HTML no permite anidar <form> y el navegador lo deshace. #}
       <form method="post" action="/admin/temporada/catalogo" enctype="multipart/form-data"
@@ -252,6 +322,22 @@
       <p class="nota">Las referencias que NO entran en la promoción. Necesita
          la columna <code>article_id</code>.</p>
       {% endif %}
+
+      <details class="ejemplo">
+        <summary>Ver cómo van los encabezados</summary>
+        <div class="ejemplo-cuerpo">
+          <p>La <strong>primera fila</strong> son los nombres de las columnas:</p>
+          <pre class="ejemplo-cab" id="cab-excluidos">article_id;campaign_name;id_promocion</pre>
+          <button type="button" class="btn-copiar" data-copiar="cab-excluidos">
+            Copiar encabezados</button>
+          <p>Y debajo una fila por referencia excluida:</p>
+          <pre class="ejemplo-cab fila">KQ6512;AFC 3 JSY;1
+JZ3160;AFC A JSY;1</pre>
+          <p>La única imprescindible es <code>article_id</code> (la
+             referencia). <code>campaign_name</code> e
+             <code>id_promocion</code> pueden faltar.</p>
+        </div>
+      </details>
 
       <form method="post" action="/admin/temporada/excluidos" enctype="multipart/form-data"
             class="form-subida" style="margin: 0;">
@@ -441,6 +527,24 @@
         directorio actual</a>, editarlo en Excel y volver a subirlo. Máximo
         {{ max_kb_directorio }} KB.
       </p>
+      <details class="ejemplo">
+        <summary>Ver cómo van los encabezados</summary>
+        <div class="ejemplo-cuerpo">
+          <p>La <strong>primera fila</strong> son los nombres de las columnas,
+             escritos igual y sin tildes:</p>
+          <pre class="ejemplo-cab" id="cab-referidos">codigo,nombre,ciudad</pre>
+          <button type="button" class="btn-copiar" data-copiar="cab-referidos">
+            Copiar encabezados</button>
+          <p>Y debajo una fila por persona:</p>
+          <pre class="ejemplo-cab fila">COSORIO,Carolina Marcela Osorio Gil,Bucaramanga</pre>
+          <p>Las tres columnas son obligatorias. La <code>ciudad</code> tiene
+             que ser una de estas: {% for c in ciudades %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+          <p>Es el mismo formato que sale al
+             <a href="/admin/referidos/csv" style="color: #8a8f64;">descargar el
+             directorio actual</a>, así que lo más seguro es editar ese archivo.</p>
+        </div>
+      </details>
+
       <form method="post" action="/admin/referidos/csv" enctype="multipart/form-data"
             class="form-subida-ref" style="margin: 0;">
         <input type="file" name="archivo" accept=".csv,text/csv" required>
@@ -774,6 +878,45 @@
       alNavegar(publicar.querySelector('button'), 'Publicando...');
     });
   }
+
+  /*
+    Copiar los encabezados de ejemplo al portapapeles, para pegarlos en la
+    primera fila del Excel. Si el navegador no deja (sin HTTPS, o permiso
+    denegado), se selecciona el texto y que lo copie a mano: el botón nunca
+    se queda mintiendo con un "copiado" que no pasó.
+  */
+  Array.prototype.forEach.call(document.querySelectorAll('.btn-copiar'), function (b) {
+    b.addEventListener('click', function () {
+      var caja = document.getElementById(b.dataset.copiar);
+      if (!caja) return;
+      var original = b.textContent.trim();
+
+      function ok() {
+        b.textContent = 'Copiado';
+        b.classList.add('copiado');
+        setTimeout(function () {
+          b.textContent = original;
+          b.classList.remove('copiado');
+        }, 1800);
+      }
+
+      function aMano() {
+        var rango = document.createRange();
+        rango.selectNodeContents(caja);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(rango);
+        b.textContent = 'Cópialo con Ctrl+C';
+        setTimeout(function () { b.textContent = original; }, 2600);
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(caja.textContent).then(ok, aMano);
+      } else {
+        aMano();
+      }
+    });
+  });
 
   // Subidas y descartes: ruedita, y confirmación solo al descartar.
   Array.prototype.forEach.call(document.querySelectorAll('.form-subida'), function (f) {
