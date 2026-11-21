@@ -114,6 +114,23 @@
   .cifra .cuanto small { font-size: 13px; color: #888; font-weight: normal; }
 
   /* ── Códigos de referido ──────────────────────────────────────────── */
+  /* Van dentro de su propio cuadro, con una línea de corte encima: lo de
+     arriba es el ciclo de preparar y publicar la temporada; esto no entra
+     ahí y se puede tocar con la temporada abierta. La separación es visual
+     a propósito, para que no haya que leer un párrafo para notarlo. */
+  .corte {
+    border: none; border-top: 2px dashed #e2e2d6; margin: 46px 0 0;
+  }
+  .aparte {
+    border: 2px solid #cbd0ad; border-radius: 22px; background: #fbfbf2;
+    padding: 26px 28px 30px; margin-top: 26px;
+  }
+  .aparte > h3 { margin-top: 0 !important; }
+  /* Las piezas van en blanco: sobre el fondo crema del cuadro, el #fafaf7
+     de siempre se perdería. */
+  .aparte .pieza, .aparte .fila-ref-caja { background: white; }
+  @media (max-width: 700px) { .aparte { padding: 20px 16px 24px; } }
+
   /* Cada fila es un formulario propio: se guarda una y las demás se quedan
      como estaban. El borrar va en OTRO formulario al lado (no dentro: HTML
      no permite anidar <form> y el navegador lo deshace). */
@@ -469,6 +486,8 @@ JZ3160;AFC A JSY;1</pre>
        Por eso el aviso amarillo, para que no se confunda con los archivos
        de arriba.
     #}
+    <hr class="corte">
+    <div class="aparte">
     <h3 id="referidos" style="color: #8a8f64; margin: 45px 0 6px;">Códigos de referido</h3>
     <p style="font-size: 13px; color: #777; margin: 0 0 12px;">
       El código que el cliente escribe al iniciar sesión o registrarse. La
@@ -830,6 +849,7 @@ JZ3160;AFC A JSY;1</pre>
       </ul>
     </details>
     {% endif %}
+    </div><!-- /.aparte -->
 
   </div>
 </section>
