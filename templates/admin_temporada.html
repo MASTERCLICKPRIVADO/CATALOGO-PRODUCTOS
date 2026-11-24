@@ -1045,6 +1045,19 @@ JZ3160;AFC A JSY;1</pre>
     }, 0);
   }
 
+  /*
+    Abrir la temporada es otra cosa: no recarga una pantalla, deja entrar a
+    los clientes. El servidor guarda el estado y vuelve a cargar el
+    catálogo entero en memoria, así que es de las esperas más largas del
+    panel. Una ruedita dentro del botón se queda corta: se tapa la pantalla
+    igual que al filtrar las reservas, y de paso no se puede tocar nada
+    mientras la tienda está abriendo.
+  */
+  function alAbrir(form) {
+    alNavegar(form.querySelector('button[type=submit]'), 'Abriendo...');
+    MC.velo('Abriendo la temporada...');
+  }
+
   function confirmar(id, pregunta, textoBoton) {
     var form = document.getElementById(id);
     if (!form) return;
@@ -1077,9 +1090,21 @@ JZ3160;AFC A JSY;1</pre>
         '?\n\nLos clientes van a ver el catálogo que esté publicado ahora ' +
         'mismo, y la tienda se cerrará sola al terminar el ' + enDia(h) + '.';
       if (!confirm(aviso)) { e.preventDefault(); return; }
-      alNavegar(abrir.querySelector('button[type=submit]'), 'Abriendo...');
+      alAbrir(abrir);
     });
   }
+
+  /*
+    El otro botón de abrir: el que sale mientras falte la migración de las
+    fechas. No pasa por el manejador de arriba (no tiene rango que
+    confirmar), pero la espera que viene detrás es exactamente la misma.
+  */
+  Array.prototype.forEach.call(
+    document.querySelectorAll('form[action="/admin/temporada/abrir"]'),
+    function (f) {
+      if (f.id === 'form-abrir') return;
+      f.addEventListener('submit', function () { alAbrir(f); });
+    });
 
   // 'AAAA-MM-DD' -> 'DD/MM/AAAA'. Sin new Date(): con una fecha suelta el
   // navegador la interpreta en UTC y en Colombia saldría el día anterior.
