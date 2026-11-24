@@ -93,6 +93,76 @@
     </script>
 
     <!--
+        Velo de carga compartido.
+
+        La ruedita de arriba vive DENTRO de un botón y sirve cuando lo que
+        se espera es ese botón. Cuando lo que va a cambiar es la pantalla
+        entera (filtrar una tabla, quitar los filtros, armar un CSV) se
+        tapa todo con esta tarjeta: así se ve que se está trabajando y no
+        se puede volver a hacer clic sobre unos datos que ya van a cambiar.
+
+        El estilo (`.velo-carga`) está en estilos2.css, con el retraso que
+        hace que no se vea nada si el servidor contesta enseguida.
+    -->
+    <script>
+    window.MC = window.MC || {};
+    (function () {
+        /*
+              const cerrar = MC.velo('Filtrando las reservas...');
+              ...
+              cerrar();   // solo si nos quedamos en esta página
+
+          Igual que MC.cargando: si después se navega o se recarga, NO se
+          llama y el velo se va solo con la página vieja.
+        */
+        MC.velo = function (texto) {
+            if (!document.body) return function () {};
+
+            var velo = document.createElement('div');
+            velo.className = 'velo-carga';
+            // `status` + `polite` para que el lector de pantalla anuncie el
+            // texto sin interrumpir lo que esté diciendo.
+            velo.setAttribute('role', 'status');
+            velo.setAttribute('aria-live', 'polite');
+
+            var tarjeta = document.createElement('div');
+            tarjeta.className = 'tarjeta';
+
+            var rueda = document.createElement('div');
+            rueda.className = 'rueda';
+
+            var que = document.createElement('div');
+            que.className = 'que';
+            // textContent y no innerHTML: el texto puede venir de un dato
+            // de la página y aquí no se pinta HTML de nadie.
+            que.textContent = texto || 'Un momento...';
+
+            tarjeta.appendChild(rueda);
+            tarjeta.appendChild(que);
+            velo.appendChild(tarjeta);
+            document.body.appendChild(velo);
+
+            var cerrado = false;
+            return function cerrar() {
+                if (cerrado) return;   // llamarla dos veces no hace daño
+                cerrado = true;
+                if (velo.parentNode) velo.parentNode.removeChild(velo);
+            };
+        };
+
+        // Volver atrás puede devolver la página tal como estaba, con un
+        // velo puesto por una navegación que ya terminó. Se quitan todos.
+        window.addEventListener('pageshow', function (e) {
+            if (!e.persisted) return;
+            var velos = document.querySelectorAll('.velo-carga');
+            for (var i = 0; i < velos.length; i++) {
+                velos[i].parentNode.removeChild(velos[i]);
+            }
+        });
+    })();
+    </script>
+
+    <!--
         Ruedita al cambiar de pestaña del panel.
 
         Las pestañas (Descuentos / Temporada) son enlaces normales, y la

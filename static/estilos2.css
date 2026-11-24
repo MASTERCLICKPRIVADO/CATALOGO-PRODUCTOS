@@ -1023,6 +1023,73 @@ button:disabled:active,
 
 
 /* ──────────────────────────────────────────────────────────────────────
+   VELO DE CARGA
+   ──────────────────────────────────────────────────────────────────────
+   Para esperas que NO caben dentro de un boton: filtrar una tabla entera,
+   quitar los filtros o armar un CSV. Tapa la pantalla con una tarjeta que
+   dice que se esta trabajando, asi no se vuelve a hacer clic sobre unos
+   datos que ya estan a punto de cambiar.
+   Lo pone y lo quita MC.velo() (ver templates/base.html).
+
+   Aparece con 0.12s de retraso a proposito: si el servidor contesta antes
+   que eso, no se ve ni un parpadeo. Solo se nota cuando de verdad hay que
+   esperar.                                                               */
+
+.velo-carga {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(58, 60, 45, 0.32);
+    opacity: 0;
+    animation: mc-velo-entrar 0.18s ease-out 0.12s forwards;
+}
+
+.velo-carga .tarjeta {
+    background: white;
+    border-radius: 18px;
+    padding: 30px 36px;
+    min-width: 220px;
+    text-align: center;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.18);
+}
+
+/* La rueda grande del velo: el aro en el gris de los bordes de la pagina y
+   solo el trozo que gira en el verde de la marca. */
+.velo-carga .rueda {
+    width: 38px;
+    height: 38px;
+    margin: 0 auto 14px;
+    border: 3px solid #e8e8e0;
+    border-top-color: #8a8f64;
+    border-radius: 50%;
+    animation: mc-girar 0.7s linear infinite;
+}
+
+.velo-carga .que {
+    font-size: 14px;
+    color: #777;
+}
+
+@keyframes mc-velo-entrar {
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* El velo tiene que seguir apareciendo (es la señal de que el clic
+       entro), pero sin la rueda corriendo ni el fundido. */
+    .velo-carga { animation-duration: 0.01s; }
+    .velo-carga .rueda { animation-duration: 2.4s; }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────
    AVISO DE TIENDA CERRADA (solo lo ve el admin)
    ──────────────────────────────────────────────────────────────────────
    Cuando la temporada esta cerrada, el admin es el unico que puede

@@ -1627,12 +1627,19 @@ async def ver_reservas(request: Request, orden: str = db.ORDEN_RESERVAS_POR_DEFE
 
 @router.get("/reservas/csv", dependencies=[Depends(requiere_admin)])
 async def descargar_reservas_csv(request: Request,
-                                 orden: str = db.ORDEN_RESERVAS_POR_DEFECTO):
+                                 orden: str = db.ORDEN_RESERVAS_POR_DEFECTO,
+                                 descarga: str = ""):
     """
     Lo que se está viendo, en CSV y con una fila por artículo.
 
     Respeta los filtros de la pantalla y se salta la paginación: se lleva
     todo lo que cumple el filtro, no la página.
+
+    `descarga` es la ficha que manda la pantalla para saber cuándo quitar
+    el velo de carga: al navegador no le llega ningún aviso de que una
+    descarga empezó, así que la ficha vuelve en una cookie con la respuesta
+    (ver el script de templates/admin_reservas.html). No se usa para nada
+    más y no toca la consulta.
     """
     filtros = _consulta_reservas(_filtros_reservas_de_url(request))
     if orden not in db.ORDENES_RESERVAS:
@@ -1644,9 +1651,20 @@ async def descargar_reservas_csv(request: Request,
         raise HTTPException(status_code=500, detail=_error_bd(e))
 
     hoy = db.hora_bogota_para_guardar().strftime("%Y-%m-%d")
-    return Response(
+    respuesta = Response(
         content=contenido.encode("utf-8-sig"),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition":
                  f'attachment; filename="reservas_{hoy}.csv"'},
     )
+
+    # La ficha se devuelve TAL CUAL solo si son dígitos, que es lo único
+    # que manda la pantalla: así nunca se escribe en una cabecera algo que
+    # llegó escrito por fuera. `httponly=False` a propósito, porque el
+    # script de la pantalla tiene que poder leerla.
+    ficha = str(descarga or "")[:20]
+    if ficha.isdigit():
+        respuesta.set_cookie("descarga_csv", ficha, max_age=60,
+                             path="/admin/reservas", httponly=False,
+                             samesite="lax")
+    return respuesta

@@ -226,7 +226,7 @@
       <span>Vendedor: <strong style="color: #6e7350;">{{ filtros.referido }}</strong></span>
       {% endif %}
       <a href="/admin/reservas/csv{% if enlace_base %}?{{ enlace_base }}{% endif %}"
-         style="color: #8a8f64; margin-left: auto;">
+         class="descargar-csv" style="color: #8a8f64; margin-left: auto;">
         Descargar en CSV ({{ "{:,}".format(resumen.reservas).replace(",", ".") }}
         reserva{% if resumen.reservas != 1 %}s{% endif %})
       </a>
@@ -399,6 +399,75 @@
   CSS; sin JavaScript se quedan todas a la vista, que es más útil que no
   poder abrirlas.
 */
+/*
+  Avisar de que se está trabajando.
+
+  Filtrar, limpiar y bajar el CSV se van al servidor y pueden tardar lo
+  suyo: son consultas sobre TODAS las reservas, no sobre la página que se
+  ve. Sin esto el clic no hace nada visible y es fácil volver a darle.
+
+  El velo (MC.velo, en base.html) tarda 0.12s en verse, así que cuando la
+  respuesta es rápida no aparece nada.
+*/
+(function () {
+  function otraPestana(e, enlace) {
+    // Ctrl+clic, clic del medio y demás abren otra pestaña DEL NAVEGADOR:
+    // esta página se queda donde está y no hay nada que esperar.
+    return e.defaultPrevented || e.button !== 0 ||
+           e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+           (enlace.target && enlace.target !== '_self');
+  }
+
+  var formulario = document.querySelector('form.filtros');
+  if (formulario) {
+    // Vale igual para el botón Filtrar y para un Enter dentro del buscador.
+    formulario.addEventListener('submit', function () {
+      MC.velo('Filtrando las reservas...');
+    });
+  }
+
+  var limpiar = document.querySelector('.filtros .limpiar');
+  if (limpiar) {
+    limpiar.addEventListener('click', function (e) {
+      if (otraPestana(e, limpiar)) return;
+      MC.velo('Quitando los filtros...');
+    });
+  }
+
+  /*
+    El CSV es distinto: la página NO se va a ninguna parte, así que el velo
+    hay que quitarlo a mano. Y el navegador no avisa cuándo llegó un
+    archivo descargado, de modo que se manda una ficha en la URL y el
+    servidor la devuelve en una cookie al contestar (ver app/admin.py):
+    cuando la cookie aparece, el archivo ya está saliendo.
+  */
+  var csv = document.querySelector('.descargar-csv');
+  if (csv) {
+    csv.addEventListener('click', function (e) {
+      if (otraPestana(e, csv)) return;
+      e.preventDefault();
+
+      var ficha = String(Date.now());
+      var url = csv.href + (csv.href.indexOf('?') === -1 ? '?' : '&') +
+                'descarga=' + ficha;
+
+      var cerrar = MC.velo('Preparando el CSV...');
+      var desde = Date.now();
+      var reloj = setInterval(function () {
+        var llego = document.cookie.indexOf('descarga_csv=' + ficha) !== -1;
+        // El tope es por si algo sale mal camino del servidor: el velo no
+        // se puede quedar puesto tapando la pantalla para siempre.
+        if (!llego && Date.now() - desde < 60000) return;
+        clearInterval(reloj);
+        document.cookie = 'descarga_csv=; Max-Age=0; path=/admin/reservas';
+        cerrar();
+      }, 200);
+
+      window.location.href = url;
+    });
+  }
+})();
+
 (function () {
   var tabla = document.querySelector('table.reservas');
   if (!tabla) return;
