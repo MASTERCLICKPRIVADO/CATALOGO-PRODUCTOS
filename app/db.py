@@ -2236,17 +2236,18 @@ ORDENES_RESERVAS_CSV = {
 
 ORDEN_RESERVAS_POR_DEFECTO = "fecha_desc"
 
-# Las dos tablas puestas una debajo de otra, con una columna que dice de
-# cuál vino cada fila. `tienda_salida` solo existe en una, así que en la
-# otra se rellena con NULL para que las dos tengan la misma forma.
+# Las dos tablas puestas una debajo de otra. El panel no distingue de cuál
+# vino cada fila: todas las reservas son de un cliente. `tienda_salida` solo
+# existe en una, así que en la otra se rellena con NULL para que las dos
+# tengan la misma forma.
 _SQL_LINEAS = """
-    SELECT 'clientes' AS origen, reserva_id, fecha, usuario, nombre, apellido,
+    SELECT reserva_id, fecha, usuario, nombre, apellido,
            cedula, correo, celular, direccion, ciudad_envio, referencia, talla,
            ciudad_item, nombre_producto, precio_unitario, cantidad, subtotal,
            codigo_referido, NULL::text AS tienda_salida, id
       FROM reservas_family
      UNION ALL
-    SELECT 'tiendas', reserva_id, fecha, usuario, nombre, apellido,
+    SELECT reserva_id, fecha, usuario, nombre, apellido,
            cedula, correo, celular, direccion, ciudad_envio, referencia, talla,
            ciudad_item, nombre_producto, precio_unitario, cantidad, subtotal,
            codigo_referido, tienda_salida, id
@@ -2259,7 +2260,6 @@ _SQL_LINEAS = """
 _SQL_RESERVAS = f"""
     WITH lineas AS ({_SQL_LINEAS})
     SELECT reserva_id,
-           min(origen)            AS origen,
            min(fecha)             AS fecha,
            min(usuario)           AS usuario,
            min(nombre)            AS nombre,
@@ -2319,11 +2319,6 @@ def _filtros_reservas(filtros: dict):
     if ciudad:
         condiciones.append("%s = ANY(ciudades)")
         params.append(ciudad)
-
-    origen = str((filtros or {}).get("origen") or "").strip()
-    if origen in ("clientes", "tiendas"):
-        condiciones.append("origen = %s")
-        params.append(origen)
 
     referido = str((filtros or {}).get("referido") or "").strip()
     if referido:
@@ -2480,7 +2475,7 @@ def exportar_reservas_csv(filtros: dict = None,
     salida = io.StringIO()
     escritor = csv.writer(salida, lineterminator="\r\n")
     escritor.writerow([
-        "reserva_id", "fecha", "origen", "cuenta", "nombre", "apellido",
+        "reserva_id", "fecha", "cuenta", "nombre", "apellido",
         "cedula", "correo", "celular", "direccion", "ciudad_envio",
         "codigo_referido", "tienda_salida", "referencia", "talla",
         "ciudad_item", "nombre_producto", "precio_unitario", "cantidad",
@@ -2504,7 +2499,7 @@ def exportar_reservas_csv(filtros: dict = None,
                 escritor.writerow([
                     r["reserva_id"],
                     fecha.strftime("%Y-%m-%d %H:%M:%S") if fecha else "",
-                    r["origen"], r["usuario"], r["nombre"], r["apellido"],
+                    r["usuario"], r["nombre"], r["apellido"],
                     r["cedula"], r["correo"], r["celular"], r["direccion"],
                     r["ciudad_envio"], r["codigo_referido"] or "",
                     r["tienda_salida"] or "", r["referencia"], r["talla"],

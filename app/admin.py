@@ -1499,7 +1499,7 @@ async def confirmar_directorio_csv(request: Request, contenido: str = Form("")):
 
 # Lo que puede pedir la URL. Se valida todo: el tamaño de página y el orden
 # se comprueban contra las listas de db.py y lo demás va parametrizado.
-FILTROS_RESERVAS = ("q", "desde", "hasta", "ciudad", "origen", "referido")
+FILTROS_RESERVAS = ("q", "desde", "hasta", "ciudad", "referido")
 
 
 def _fecha_filtro(texto: str, dias: int = 0):
@@ -1541,7 +1541,6 @@ def _consulta_reservas(crudos: dict) -> dict:
         "desde": _fecha_filtro(crudos["desde"]),
         "hasta": _fecha_filtro(crudos["hasta"], dias=1),
         "ciudad": crudos["ciudad"],
-        "origen": crudos["origen"],
         "referido": crudos["referido"],
     }
 

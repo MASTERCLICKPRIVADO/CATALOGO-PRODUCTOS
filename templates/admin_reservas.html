@@ -79,12 +79,6 @@
   table.reservas .total { font-weight: bold; color: #333; }
   .cliente-nombre { font-weight: bold; color: #444; }
   .cliente-correo { font-size: 12px; color: #999; word-break: break-all; }
-  .etiqueta {
-    font-size: 10px; font-weight: bold; text-transform: uppercase;
-    padding: 2px 8px; border-radius: 999px; white-space: nowrap;
-  }
-  .etiqueta.clientes { background: #eef0e4; color: #6e7350; }
-  .etiqueta.tiendas { background: #e3eaf3; color: #3a5a80; }
   .ver-detalle {
     background: none; border: 1px solid #ddd; border-radius: 999px;
     padding: 5px 12px; font-size: 12px; color: #777; cursor: pointer;
@@ -133,8 +127,8 @@
 
     <h1 style="color: #8a8f64; margin: 10px 0 4px;">Reservas</h1>
     <p style="color: #999; margin: 0; font-size: 0.85rem;">
-      Todo lo que han reservado los clientes y las tiendas. Esta pantalla solo
-      consulta: las reservas no se cambian desde aquí.
+      Todo lo que han reservado los clientes. Esta pantalla solo consulta:
+      las reservas no se cambian desde aquí.
     </p>
 
     {% if error %}<div class="caja-aviso caja-mal">{{ error }}</div>{% endif %}
@@ -194,14 +188,6 @@
           {% for c in ciudades %}
           <option value="{{ c }}" {% if c == filtros.ciudad %}selected{% endif %}>{{ c }}</option>
           {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label for="f-origen">Quién reservó</label>
-        <select id="f-origen" name="origen">
-          <option value="">Todos</option>
-          <option value="clientes" {% if filtros.origen == 'clientes' %}selected{% endif %}>Clientes</option>
-          <option value="tiendas" {% if filtros.origen == 'tiendas' %}selected{% endif %}>Tiendas</option>
         </select>
       </div>
       <div>
@@ -287,9 +273,6 @@
             <td>
               <div class="cliente-nombre">{{ r.nombre }} {{ r.apellido }}</div>
               <div class="cliente-correo">{{ r.correo }}</div>
-              {% if r.origen == 'tiendas' %}
-              <span class="etiqueta tiendas">Tienda</span>
-              {% endif %}
             </td>
             <td>
               {% if r.codigo_referido %}
@@ -319,12 +302,7 @@
                   <strong>Celular:</strong> {{ r.celular or '—' }}<br>
                   <strong>Dirección:</strong> {{ r.direccion or '—' }}<br>
                   <strong>Ciudad de envío:</strong> {{ r.ciudad_envio or '—' }}<br>
-                  <strong>Cuenta:</strong> {{ r.usuario }}<br>
-                  {% if r.tienda_salida %}
-                  <strong>Tienda de salida:</strong> {{ r.tienda_salida }}<br>
-                  {% endif %}
-                  <strong>Reservó:</strong>
-                  {% if r.origen == 'tiendas' %}una tienda{% else %}el cliente{% endif %}
+                  <strong>Cuenta:</strong> {{ r.usuario }}
                 </div>
                 <div class="detalle-items">
                   <span class="rotulo" style="font-size: 10px; color: #aaa;
